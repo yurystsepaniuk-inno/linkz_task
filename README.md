@@ -2,6 +2,9 @@
 
 A minimal seat reservation platform consisting of four services. The scope is deliberately small (3 seats, 2 demo users) so the README can focus on the *engineering decisions* — what was built, what was deferred, and why.
 
+
+The Gherkin acceptance criteria can be found in [docs/acceptance-criteria/](docs/acceptance-criteria/). Scenarios that were explicitly excluded from this implementation (such as idempotency keys, refund compensation, and DLQ handling) are detailed in [docs/scope-not-implemented/](docs/scope-not-implemented/). While these robust features are highly valuable for a production system, they fell outside what was realistic to implement within the 2-hour time constraint of this assignment. However, I’ve included them in the documentation to demonstrate how the system could be scaled with more time.
+
 ## Contents
 
 
@@ -114,8 +117,6 @@ cd payment-web && npm install && npm run dev
 | `GET`  | `/api/checkout/sessions/:id` | — | — | `{seatId, amount}` / `404` |
 | `POST` | `/api/checkout/sessions/:id/pay` | — | `{cardNumber}` | `{status:"success"\|"failed"}` / `400` / `404` |
 
-Gherkin acceptance criteria are in [docs/acceptance-criteria/](docs/acceptance-criteria/). Scenarios that were considered and explicitly excluded (idempotency keys, refund compensation, DLQ, etc.) are in [docs/scope-not-implemented/](docs/scope-not-implemented/). If there is more time, I would love to implement all scenarious, so that is why it is shared with you under docs.
-
 ---
 
 ## Environment Variables
@@ -189,8 +190,12 @@ This section documents the non-obvious choices and the trade-offs behind them.
 **Why:** to show service boundaries — auth/seat state, hosted checkout UI, and payment processing each have different security postures, deployment cadences, and scaling profiles in a real system.
 **Trade-off:** four `npm install`s, four ports, a webhook hop, CORS configuration on each API. For 3 seats this is obviously over-engineered. For a real platform it isn't.
 
+### Separate `reservations` table; `seats` holds only availability state
+**Why:** a seat is a static physical entity; a reservation is a transient event with a lifecycle (pending → confirmed / failed / expired). Storing `session_id`, `locked_at`, and `user_id` directly on `seats` mixed two concerns in one row and made the columns mean different things depending on `status`. Moving them to a dedicated `reservations` table gives a full audit trail, keeps `seats` as a clean availability cache, and places payment-provider correlation (`session_id`) where it belongs — on the payment transaction, not the seat.
+**Trade-off:** queries that need both seat status and reservation detail now touch two tables. For this scope the added clarity is worth it.
+
 ### Raw `pg.Pool`, no ORM
-**Why:** the data model is two tables and a `SELECT ... FOR UPDATE`. An ORM would obscure the lock semantics, which is the *one* thing here that has to be correct.
+**Why:** the data model is three tables (`users`, `seats`, `reservations`) and a `SELECT ... FOR UPDATE`. An ORM would obscure the lock semantics, which is the *one* thing here that has to be correct.
 **Trade-off:** writing SQL by hand and managing the migration script myself. Acceptable at this size.
 
 ### Pessimistic locking (`SELECT FOR UPDATE`) for seat reservation
@@ -269,7 +274,7 @@ The trade-off is explicit: this setup is optimized for **reviewer verifiability*
 - **Input validation:** `class-validator` on all DTOs (NestJS `ValidationPipe` runs globally). Card number format validated via regex before any business logic.
 - **Seat double-booking:** prevented by `SELECT ... FOR UPDATE` inside a transaction. The reservation row is locked between SELECT and UPDATE, so two concurrent requests serialize.
 - **Service-to-service authentication:** `POST /api/checkout/sessions` on payment-api requires a shared `x-api-key` header. Only reservation-api, which holds `PAYMENT_API_KEY`, can create checkout sessions. This prevents an external caller from crafting a session for an arbitrary `seatId`/`userId` and triggering a validly-signed webhook that would confirm or release another user's active reservation. The key never reaches the browser: it lives in reservation-api's server environment and is attached to an outbound server-side fetch call; the browser only ever receives the resulting `checkoutUrl`.
-- **Stale-payment webhook isolation:** the webhook UPDATE is anchored to `AND session_id = $sessionId`. A late payment event from a previous checkout session cannot confirm or cancel a newer reservation of the same seat — even for the same user — because each reservation attempt gets a unique `session_id` stored on the seat row and included in the webhook payload. A stale event carries the old `sessionId`, which no longer matches.
+- **Stale-payment webhook isolation:** the webhook UPDATE is anchored to `AND session_id = $sessionId`. A late payment event from a previous checkout session cannot confirm or cancel a newer reservation of the same seat — even for the same user — because each reservation attempt gets a unique `session_id` stored on its `reservations` row and included in the webhook payload. A stale event carries the old `sessionId`, which no longer matches any active reservation row.
 - **Payment session single-use:** `POST /api/checkout/sessions/:id/pay` checks that the session status is still `PENDING` before processing. A session that is already `PAID` or `FAILED` is rejected with `400 alreadyProcessed`. This prevents an attacker from replaying an old session (e.g. calling `pay()` a second time with a different card) to fire a second validly-signed webhook — which could corrupt seat state if the same user had re-booked the same seat in the interim.
 - **Payment session TTL:** checkout sessions expire after 30 minutes. `get()` evicts and returns `undefined` for expired sessions, so both the hosted checkout page and `pay()` return `404` on stale links. This bounds the window in which a session-replay is possible even if the single-use guard were absent.
 
@@ -292,9 +297,9 @@ Concrete failure scenarios and what the system does in each case.
 | **User starts payment and closes the tab** | Seat sits in `PENDING_PAYMENT`. Cron worker releases it after 5 minutes (`locked_at < NOW() - 5min`). | The user can refresh and try again, or someone else can take the seat after the lock expires. |
 | **Webhook from payment-api never arrives** | reservation-api never sees the success/failure event. Cron releases the seat after 5 minutes. | The user has paid (or failed to pay) at payment-api but reservation-api doesn't know — see "known reconciliation gap" below. |
 | **Webhook arrives with invalid signature** | reservation-api rejects with `401 Unauthorized`. Seat unchanged. | Verified by unit test. In production this should also trigger an alert. |
-| **Webhook arrives for a seat no longer in `PENDING_PAYMENT`** | The UPDATE clause includes `AND status = 'PENDING_PAYMENT' AND session_id = $sessionId`. Rowcount is 0; the webhook is effectively a no-op. Response is still `{received:true}`. | This makes the webhook idempotent for the happy path — duplicate deliveries don't double-confirm. |
-| **Duplicate webhook for an already-confirmed seat** | Same as above — UPDATE matches no rows. | A more rigorous solution would track `(webhook_id, status)` so duplicates are observable, not just absorbed. |
-| **Stale webhook from User A arrives while seat is `PENDING_PAYMENT` for User B** | The `AND session_id = $sessionId` clause prevents the match. User B's reservation is untouched. Response is still `{received:true}`. | Each webhook is anchored to the unique checkout session ID stored on the seat row, so a late event carrying a stale `sessionId` matches no rows regardless of who currently holds the seat. |
+| **Webhook arrives for a seat no longer in `PENDING_PAYMENT`** | The reservations UPDATE includes `AND status = 'PENDING_PAYMENT' AND session_id = $sessionId`. Rowcount is 0; the webhook is effectively a no-op. Response is still `{received:true}`. | This makes the webhook idempotent for the happy path — duplicate deliveries don't double-confirm. |
+| **Duplicate webhook for an already-confirmed seat** | Same as above — the reservations UPDATE matches no rows; the seats UPDATE is skipped. | A more rigorous solution would track `(webhook_id, status)` so duplicates are observable, not just absorbed. |
+| **Stale webhook from User A arrives while seat is `PENDING_PAYMENT` for User B** | The `AND session_id = $sessionId` clause prevents the match on the reservations table. User B's reservation is untouched. Response is still `{received:true}`. | Each webhook is anchored to the unique checkout session ID stored on the `reservations` row, so a late event carrying a stale `sessionId` matches no active reservation regardless of who currently holds the seat. |
 | **Late webhook for a seat that timed out and is now `CONFIRMED` by someone else** | Webhook UPDATE matches no rows on both `status` and `session_id`; the second user keeps the seat; the first user has paid at payment-api with no corresponding reservation. **This is the known reconciliation gap.** See below. | |
 | **User calls `pay()` a second time on an already-PAID or FAILED session** | payment-api rejects with `400 alreadyProcessed` before any webhook is fired. No second webhook is ever sent to reservation-api. | Without this guard, a same-user re-booking of the same seat followed by replaying the old session would match the UPDATE SQL and corrupt seat state. Verified by unit tests. |
 | **User accesses checkout page or calls `pay()` on a session older than 30 minutes** | `SessionsStore.get()` evicts the session and returns `undefined`; the response is `404 Session not found`. | Bounds the session-replay window even if an application-level guard were absent. |
@@ -304,8 +309,8 @@ Concrete failure scenarios and what the system does in each case.
 If a webhook is delayed past the 5-minute expiry **and** another user takes the seat in the interim, the original user's payment at payment-api has no matching reservation. Today this user would need to be refunded manually.
 
 The fully-engineered solution requires:
-1. A `payments` table that records the payment intent at reservation time, before payment is initiated.
-2. On late-webhook arrival, detect the orphaned payment and trigger an automated refund via the payment provider.
+1. ~~A `payments` table~~ — the `reservations` table already records who attempted a reservation and with which `session_id` before payment is initiated. An EXPIRED reservation whose `session_id` matches a late incoming webhook can be identified.
+2. On late-webhook arrival, detect that the matched reservation is in `EXPIRED` state (not `PENDING_PAYMENT`) and trigger an automated refund via the payment provider.
 3. A "dead-letter" / human-review queue for refunds that themselves fail.
 
 This is explicitly out of scope for the assessment — the full scenario is captured in [docs/scope-not-implemented/booking_system.feature](docs/scope-not-implemented/booking_system.feature) under "Execute compensation refund."

@@ -3,12 +3,15 @@ import { ConflictException, BadGatewayException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ReservationsService } from './reservations.service';
 import { PG_POOL } from '../database/database.module';
-import { SEAT_STATUS, ERROR_CODE } from '../common/constants';
+import { SEAT_STATUS, RESERVATION_STATUS, ERROR_CODE } from '../common/constants';
 
 const makeClient = (statusRow: { status: string } | null) => ({
   query: jest.fn().mockImplementation((sql: string) => {
     if (sql.includes('FOR UPDATE')) {
       return Promise.resolve({ rows: statusRow ? [statusRow] : [] });
+    }
+    if (sql.includes('INSERT INTO reservations')) {
+      return Promise.resolve({ rows: [{ id: 'res-1' }] });
     }
     return Promise.resolve({ rows: [] });
   }),
@@ -52,13 +55,20 @@ describe('ReservationsService', () => {
     let capturedHeaders: Record<string, string> = {};
     jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
       capturedHeaders = init?.headers as Record<string, string>;
-      return { ok: true, json: async () => ({ checkoutUrl: 'http://localhost:3002/checkout/sess_1' }) } as Response;
+      return {
+        ok: true,
+        json: async () => ({ sessionId: 'sess_1', checkoutUrl: 'http://localhost:3002/checkout/sess_1' }),
+      } as Response;
     });
 
     const result = await service.create({ seatId: 'A1' }, 'user-1');
     expect(result.checkoutUrl).toBe('http://localhost:3002/checkout/sess_1');
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     expect(capturedHeaders['x-api-key']).toBe('test-api-key');
+    expect(mockPool.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE reservations SET session_id'),
+      ['sess_1', 'res-1'],
+    );
   });
 
   it(`throws 409 when seat is ${SEAT_STATUS.PENDING_PAYMENT}`, async () => {
@@ -88,6 +98,10 @@ describe('ReservationsService', () => {
     expect(mockPool.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE seats'),
       [SEAT_STATUS.AVAILABLE, 'A1'],
+    );
+    expect(mockPool.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE reservations'),
+      [RESERVATION_STATUS.FAILED, 'res-1'],
     );
   });
 });

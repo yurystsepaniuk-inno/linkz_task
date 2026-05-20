@@ -7,26 +7,35 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS seats (
   id TEXT PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'AVAILABLE'
-    CHECK (status IN ('AVAILABLE', 'PENDING_PAYMENT', 'CONFIRMED')),
-  assigned_to_user_id UUID REFERENCES users(id),
-  session_id TEXT,
-  locked_at TIMESTAMPTZ
+    CHECK (status IN ('AVAILABLE', 'PENDING_PAYMENT', 'CONFIRMED'))
 );
 
--- One active pending reservation per user at a time
-CREATE UNIQUE INDEX IF NOT EXISTS seats_one_pending_per_user
-  ON seats (assigned_to_user_id)
+CREATE TABLE IF NOT EXISTS reservations (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seat_id    TEXT NOT NULL REFERENCES seats(id),
+  user_id    UUID NOT NULL REFERENCES users(id),
+  session_id TEXT,
+  status     TEXT NOT NULL CHECK (status IN ('PENDING_PAYMENT', 'CONFIRMED', 'FAILED', 'EXPIRED')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  locked_at  TIMESTAMPTZ
+);
+
+-- Drop old constraint that blocked a user from pending on multiple seats
+DROP INDEX IF EXISTS reservations_one_pending_per_user;
+
+-- Sweep job: find stale PENDING_PAYMENT reservations
+CREATE INDEX IF NOT EXISTS reservations_sweep_idx
+  ON reservations (status, locked_at)
   WHERE status = 'PENDING_PAYMENT';
 
--- Sweep job: expire locks WHERE status = 'PENDING_PAYMENT' AND locked_at < threshold
-CREATE INDEX IF NOT EXISTS seats_sweep_idx
-  ON seats (status, locked_at)
-  WHERE status = 'PENDING_PAYMENT';
+-- Lookup reservations by user
+CREATE INDEX IF NOT EXISTS reservations_user_idx
+  ON reservations (user_id);
 
--- Lookup by user (release / confirm flows)
-CREATE INDEX IF NOT EXISTS seats_assigned_user_idx
-  ON seats (assigned_to_user_id)
-  WHERE assigned_to_user_id IS NOT NULL;
+-- Webhook matching by session_id
+CREATE INDEX IF NOT EXISTS reservations_session_idx
+  ON reservations (session_id)
+  WHERE session_id IS NOT NULL;
 
 INSERT INTO seats (id, status) VALUES ('A1', 'AVAILABLE'), ('A2', 'AVAILABLE'), ('A3', 'AVAILABLE')
 ON CONFLICT DO NOTHING;

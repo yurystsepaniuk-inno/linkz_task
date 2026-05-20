@@ -5,6 +5,14 @@ export const SEAT_STATUS = {
 } as const;
 export type SeatStatus = (typeof SEAT_STATUS)[keyof typeof SEAT_STATUS];
 
+export const RESERVATION_STATUS = {
+  PENDING_PAYMENT: 'PENDING_PAYMENT',
+  CONFIRMED: 'CONFIRMED',
+  FAILED: 'FAILED',
+  EXPIRED: 'EXPIRED',
+} as const;
+export type ReservationStatus = (typeof RESERVATION_STATUS)[keyof typeof RESERVATION_STATUS];
+
 export const PAYMENT_EVENT = {
   SUCCEEDED: 'payment.succeeded',
   FAILED: 'payment.failed',

@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { WebhooksService } from './webhooks.service';
 import { PG_POOL } from '../database/database.module';
-import { PAYMENT_EVENT, SEAT_STATUS } from '../common/constants';
+import { PAYMENT_EVENT, SEAT_STATUS, RESERVATION_STATUS } from '../common/constants';
 
 describe('WebhooksService', () => {
   let service: WebhooksService;
@@ -42,8 +42,12 @@ describe('WebhooksService', () => {
     const result = await service.handle(payload);
     expect(result).toEqual({ received: true });
     expect(mockPool.query).toHaveBeenCalledWith(
-      expect.any(String),
-      [SEAT_STATUS.CONFIRMED, 'A1', SEAT_STATUS.PENDING_PAYMENT, 'cs_abc'],
+      expect.stringContaining('UPDATE reservations'),
+      [RESERVATION_STATUS.CONFIRMED, 'cs_abc', RESERVATION_STATUS.PENDING_PAYMENT],
+    );
+    expect(mockPool.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE seats'),
+      [SEAT_STATUS.CONFIRMED, 'A1', SEAT_STATUS.PENDING_PAYMENT],
     );
   });
 
@@ -56,8 +60,12 @@ describe('WebhooksService', () => {
     const result = await service.handle(payload);
     expect(result).toEqual({ received: true });
     expect(mockPool.query).toHaveBeenCalledWith(
-      expect.any(String),
-      [SEAT_STATUS.AVAILABLE, 'A2', SEAT_STATUS.PENDING_PAYMENT, 'cs_def'],
+      expect.stringContaining('UPDATE reservations'),
+      [RESERVATION_STATUS.FAILED, 'cs_def', RESERVATION_STATUS.PENDING_PAYMENT],
+    );
+    expect(mockPool.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE seats'),
+      [SEAT_STATUS.AVAILABLE, 'A2', SEAT_STATUS.PENDING_PAYMENT],
     );
   });
 

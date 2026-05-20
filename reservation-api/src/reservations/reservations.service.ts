@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
 import { CreateReservationDto } from './reservation.dto';
-import { SEAT_STATUS, ERROR_CODE, API_KEY_HEADER } from '../common/constants';
+import { SEAT_STATUS, RESERVATION_STATUS, ERROR_CODE, API_KEY_HEADER } from '../common/constants';
 import { MESSAGES } from '../common/messages';
 
 @Injectable()
@@ -33,6 +33,7 @@ export class ReservationsService {
     userId: string,
   ): Promise<{ checkoutUrl: string }> {
     const client = await this.pool.connect();
+    let reservationId!: string;
     try {
       await client.query('BEGIN');
 
@@ -48,9 +49,15 @@ export class ReservationsService {
       }
 
       await client.query(
-        'UPDATE seats SET status = $1, assigned_to_user_id = $2, locked_at = NOW() WHERE id = $3',
-        [SEAT_STATUS.PENDING_PAYMENT, userId, dto.seatId],
+        'UPDATE seats SET status = $1 WHERE id = $2',
+        [SEAT_STATUS.PENDING_PAYMENT, dto.seatId],
       );
+
+      const resResult = await client.query<{ id: string }>(
+        'INSERT INTO reservations (seat_id, user_id, status, locked_at) VALUES ($1, $2, $3, NOW()) RETURNING id',
+        [dto.seatId, userId, RESERVATION_STATUS.PENDING_PAYMENT],
+      );
+      reservationId = resResult.rows[0].id;
 
       await client.query('COMMIT');
     } catch (err) {
@@ -71,15 +78,19 @@ export class ReservationsService {
 
       const data = (await response.json()) as { sessionId: string; checkoutUrl: string };
       await this.pool.query(
-        'UPDATE seats SET session_id = $1 WHERE id = $2',
-        [data.sessionId, dto.seatId],
+        'UPDATE reservations SET session_id = $1 WHERE id = $2',
+        [data.sessionId, reservationId],
       );
       return { checkoutUrl: data.checkoutUrl };
     } catch (err) {
       this.logger.error(`Payment API call failed for seat ${dto.seatId}; releasing lock`, err);
       await this.pool.query(
-        'UPDATE seats SET status = $1, assigned_to_user_id = NULL, session_id = NULL, locked_at = NULL WHERE id = $2',
+        'UPDATE seats SET status = $1 WHERE id = $2',
         [SEAT_STATUS.AVAILABLE, dto.seatId],
+      );
+      await this.pool.query(
+        'UPDATE reservations SET status = $1 WHERE id = $2',
+        [RESERVATION_STATUS.FAILED, reservationId],
       );
       throw new BadGatewayException(MESSAGES.reservations.paymentServiceUnavailable);
     }
