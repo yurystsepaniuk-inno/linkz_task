@@ -8,7 +8,14 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { PG_POOL } from '../database/database.module';
-import { PAYMENT_EVENT, SEAT_STATUS, RESERVATION_STATUS, PaymentEvent } from '../common/constants';
+import {
+  PAYMENT_EVENT,
+  SEAT_STATUS,
+  RESERVATION_STATUS,
+  PaymentEvent,
+  ReservationStatus,
+  SeatStatus,
+} from '../common/constants';
 import { MESSAGES } from '../common/messages';
 
 export interface WebhookPayload {
@@ -36,29 +43,47 @@ export class WebhooksService {
   }
 
   async handle(payload: WebhookPayload): Promise<{ received: boolean }> {
+    let reservationStatus: ReservationStatus;
+    let seatStatus: SeatStatus;
     switch (payload.event) {
       case PAYMENT_EVENT.SUCCEEDED:
-        await this.pool.query(
-          'UPDATE reservations SET status = $1 WHERE session_id = $2 AND status = $3',
-          [RESERVATION_STATUS.CONFIRMED, payload.sessionId, RESERVATION_STATUS.PENDING_PAYMENT],
-        );
-        await this.pool.query(
-          'UPDATE seats SET status = $1 WHERE id = $2 AND status = $3',
-          [SEAT_STATUS.CONFIRMED, payload.seatId, SEAT_STATUS.PENDING_PAYMENT],
-        );
+        reservationStatus = RESERVATION_STATUS.CONFIRMED;
+        seatStatus = SEAT_STATUS.CONFIRMED;
         break;
       case PAYMENT_EVENT.FAILED:
-        await this.pool.query(
-          'UPDATE reservations SET status = $1 WHERE session_id = $2 AND status = $3',
-          [RESERVATION_STATUS.FAILED, payload.sessionId, RESERVATION_STATUS.PENDING_PAYMENT],
-        );
-        await this.pool.query(
-          'UPDATE seats SET status = $1 WHERE id = $2 AND status = $3',
-          [SEAT_STATUS.AVAILABLE, payload.seatId, SEAT_STATUS.PENDING_PAYMENT],
-        );
+        reservationStatus = RESERVATION_STATUS.FAILED;
+        seatStatus = SEAT_STATUS.AVAILABLE;
         break;
       default:
         throw new BadRequestException(MESSAGES.webhooks.unknownEvent);
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query<{ seat_id: string }>(
+        'UPDATE reservations SET status = $1 WHERE session_id = $2 AND status = $3 RETURNING seat_id',
+        [reservationStatus, payload.sessionId, RESERVATION_STATUS.PENDING_PAYMENT],
+      );
+
+      // Only touch the seat when this webhook matched a live PENDING_PAYMENT
+      // reservation. A stale or duplicate event matches no row, so the seat —
+      // which may now belong to a different user — is left untouched. The
+      // seat_id comes from the matched reservation, never from the payload.
+      if (rows[0]) {
+        await client.query(
+          'UPDATE seats SET status = $1 WHERE id = $2 AND status = $3',
+          [seatStatus, rows[0].seat_id, SEAT_STATUS.PENDING_PAYMENT],
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
     }
     return { received: true };
   }
