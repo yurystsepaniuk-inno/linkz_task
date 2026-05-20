@@ -47,6 +47,7 @@ cp payment-web/.env.example     payment-web/.env
 cd reservation-api
 npm install
 npm run migrate
+cd ..
 ```
 
 This applies the schema and seeds two demo users:
@@ -60,13 +61,19 @@ In four terminals:
 ```bash
 # reservation-api (:3000)
 cd reservation-api && npm run start:dev
+```
 
+```bash
 # payment-api (:3003)
 cd payment-api && npm install && npm run start:dev
+```
 
+```bash
 # reservation-web (:3001)
 cd reservation-web && npm install && npm run dev
+```
 
+```bash
 # payment-web (:3002)
 cd payment-web && npm install && npm run dev
 ```
@@ -75,7 +82,7 @@ cd payment-web && npm install && npm run dev
 
 ## End-to-End Flow
 
-1. Open <http://localhost:3001>
+1. Open <a href="http://localhost:3001" target="_blank">http://localhost:3001</a>
 2. Login with `alice@example.com` / `password123`
 3. Click an available (green) seat → click **Book**
 4. You're redirected to `http://localhost:3002/checkout/sess_...`
