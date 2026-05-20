@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS seats (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'AVAILABLE',
+  assigned_to_user_id UUID REFERENCES users(id),
+  locked_at TIMESTAMPTZ
+);
+
+INSERT INTO seats (id, status) VALUES ('A1', 'AVAILABLE'), ('A2', 'AVAILABLE'), ('A3', 'AVAILABLE')
+ON CONFLICT DO NOTHING;

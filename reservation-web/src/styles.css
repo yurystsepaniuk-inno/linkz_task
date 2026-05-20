@@ -1,0 +1,110 @@
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #fafafa;
+  color: #222;
+}
+
+.page {
+  padding: 24px;
+}
+
+.page--narrow {
+  max-width: 400px;
+  margin: 80px auto;
+}
+
+.page--medium {
+  max-width: 600px;
+  margin: 40px auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.form-field {
+  margin-bottom: 12px;
+}
+
+.form-field__input {
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  box-sizing: border-box;
+}
+
+.error-text {
+  color: #d32f2f;
+}
+
+.button {
+  padding: 8px 24px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.button--lg {
+  padding: 10px 24px;
+}
+
+.seats {
+  display: flex;
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.seat {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  user-select: none;
+  border: 3px solid transparent;
+  cursor: pointer;
+  color: #fff;
+}
+
+.seat--available {
+  background: #4caf50;
+}
+
+.seat--occupied {
+  background: #f44336;
+  cursor: not-allowed;
+}
+
+.seat--selected {
+  background: #f0c040;
+  border-color: #333;
+  color: #222;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #333;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 6px;
+  z-index: 1000;
+}

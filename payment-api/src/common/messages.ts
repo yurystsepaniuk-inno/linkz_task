@@ -1,0 +1,12 @@
+import { CARD_LAST4 } from './constants';
+
+export const MESSAGES = {
+  sessions: {
+    notFound: 'Session not found',
+  },
+  payment: {
+    invalidCardFormat:
+      'cardNumber must be 13-19 digits, optionally separated by spaces or dashes',
+    invalidCardLast4: `Card must end in ${CARD_LAST4.SUCCESS} (success) or ${CARD_LAST4.FAILURE} (failure)`,
+  },
+} as const;
