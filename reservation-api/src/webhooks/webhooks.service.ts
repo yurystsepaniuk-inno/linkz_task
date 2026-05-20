@@ -14,6 +14,7 @@ import { MESSAGES } from '../common/messages';
 export interface WebhookPayload {
   event: PaymentEvent;
   seatId: string;
+  userId: string;
 }
 
 @Injectable()
@@ -37,14 +38,14 @@ export class WebhooksService {
     switch (payload.event) {
       case PAYMENT_EVENT.SUCCEEDED:
         await this.pool.query(
-          'UPDATE seats SET status = $1, locked_at = NULL WHERE id = $2 AND status = $3',
-          [SEAT_STATUS.CONFIRMED, payload.seatId, SEAT_STATUS.PENDING_PAYMENT],
+          'UPDATE seats SET status = $1, locked_at = NULL WHERE id = $2 AND status = $3 AND assigned_to_user_id = $4',
+          [SEAT_STATUS.CONFIRMED, payload.seatId, SEAT_STATUS.PENDING_PAYMENT, payload.userId],
         );
         break;
       case PAYMENT_EVENT.FAILED:
         await this.pool.query(
-          'UPDATE seats SET status = $1, assigned_to_user_id = NULL, locked_at = NULL WHERE id = $2 AND status = $3',
-          [SEAT_STATUS.AVAILABLE, payload.seatId, SEAT_STATUS.PENDING_PAYMENT],
+          'UPDATE seats SET status = $1, assigned_to_user_id = NULL, locked_at = NULL WHERE id = $2 AND status = $3 AND assigned_to_user_id = $4',
+          [SEAT_STATUS.AVAILABLE, payload.seatId, SEAT_STATUS.PENDING_PAYMENT, payload.userId],
         );
         break;
       default:

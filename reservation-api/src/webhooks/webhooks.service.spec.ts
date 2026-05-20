@@ -29,12 +29,12 @@ describe('WebhooksService', () => {
   });
 
   it('throws 401 on invalid signature', () => {
-    const body = Buffer.from(JSON.stringify({ event: PAYMENT_EVENT.SUCCEEDED, seatId: 'A1' }));
+    const body = Buffer.from(JSON.stringify({ event: PAYMENT_EVENT.SUCCEEDED, seatId: 'A1', userId: 'user-1' }));
     expect(() => service.verifySignature(body, 'badsig')).toThrow(UnauthorizedException);
   });
 
   it('accepts valid signature and confirms seat on payment.succeeded', async () => {
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, seatId: 'A1' };
+    const payload = { event: PAYMENT_EVENT.SUCCEEDED, seatId: 'A1', userId: 'user-1' };
     const body = Buffer.from(JSON.stringify(payload));
     const sig = sign(payload);
 
@@ -43,12 +43,12 @@ describe('WebhooksService', () => {
     expect(result).toEqual({ received: true });
     expect(mockPool.query).toHaveBeenCalledWith(
       expect.any(String),
-      [SEAT_STATUS.CONFIRMED, 'A1', SEAT_STATUS.PENDING_PAYMENT],
+      [SEAT_STATUS.CONFIRMED, 'A1', SEAT_STATUS.PENDING_PAYMENT, 'user-1'],
     );
   });
 
   it('releases seat on payment.failed', async () => {
-    const payload = { event: PAYMENT_EVENT.FAILED, seatId: 'A2' };
+    const payload = { event: PAYMENT_EVENT.FAILED, seatId: 'A2', userId: 'user-2' };
     const body = Buffer.from(JSON.stringify(payload));
     const sig = sign(payload);
 
@@ -57,13 +57,13 @@ describe('WebhooksService', () => {
     expect(result).toEqual({ received: true });
     expect(mockPool.query).toHaveBeenCalledWith(
       expect.any(String),
-      [SEAT_STATUS.AVAILABLE, 'A2', SEAT_STATUS.PENDING_PAYMENT],
+      [SEAT_STATUS.AVAILABLE, 'A2', SEAT_STATUS.PENDING_PAYMENT, 'user-2'],
     );
   });
 
   it('is idempotent for non-PENDING seat (no-op update)', async () => {
     mockPool.query.mockResolvedValueOnce({ rowCount: 0 });
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, seatId: 'A1' };
+    const payload = { event: PAYMENT_EVENT.SUCCEEDED, seatId: 'A1', userId: 'user-1' };
     const result = await service.handle(payload);
     expect(result).toEqual({ received: true });
   });

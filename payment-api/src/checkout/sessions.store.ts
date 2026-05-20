@@ -5,6 +5,7 @@ import { MESSAGES } from '../common/messages';
 
 export interface CheckoutSession {
   seatId: string;
+  userId: string;
   amount: number;
   status: SessionStatus;
 }
@@ -13,9 +14,9 @@ export interface CheckoutSession {
 export class SessionsStore {
   private readonly sessions = new Map<string, CheckoutSession>();
 
-  create(seatId: string, amount: number): { sessionId: string } {
+  create(seatId: string, userId: string, amount: number): { sessionId: string } {
     const sessionId = `${SESSION_ID_PREFIX}${randomUUID()}`;
-    this.sessions.set(sessionId, { seatId, amount, status: SESSION_STATUS.PENDING });
+    this.sessions.set(sessionId, { seatId, userId, amount, status: SESSION_STATUS.PENDING });
     return { sessionId };
   }
 

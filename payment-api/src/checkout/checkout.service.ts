@@ -25,7 +25,7 @@ export class CheckoutService {
   ) {}
 
   createSession(dto: CreateSessionDto) {
-    const { sessionId } = this.store.create(dto.seatId, dto.amount);
+    const { sessionId } = this.store.create(dto.seatId, dto.userId, dto.amount);
     const baseUrl = this.config.getOrThrow<string>('PUBLIC_BASE_URL');
     return {
       sessionId,
@@ -57,7 +57,7 @@ export class CheckoutService {
 
     this.store.update(sessionId, sessionStatus);
 
-    const body = { event, seatId: session.seatId };
+    const body = { event, seatId: session.seatId, userId: session.userId };
     const rawBody = JSON.stringify(body);
     const secret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
     const signature = createHmac('sha256', secret).update(rawBody).digest('hex');

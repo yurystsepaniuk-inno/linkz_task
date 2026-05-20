@@ -103,13 +103,13 @@ cd payment-web && npm install && npm run dev
 | `POST` | `/api/auth/login` | — | `{email, password}` | `{token}` (JWT, 90d) / `401` |
 | `GET`  | `/api/seats` | JWT | — | `[{id, status}]` |
 | `POST` | `/api/reservations` | JWT | `{seatId}` | `201 {checkoutUrl}` / `409 SEAT_ALREADY_OCCUPIED` / `502` |
-| `POST` | `/api/webhooks/payment` | HMAC `x-signature` | `{event, seatId}` | `{received:true}` / `401` / `400` |
+| `POST` | `/api/webhooks/payment` | HMAC `x-signature` | `{event, seatId, userId}` | `{received:true}` / `401` / `400` |
 
 ### payment-api (`:3003`)
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| `POST` | `/api/checkout/sessions` | `{seatId, amount}` | `{sessionId, checkoutUrl}` |
+| `POST` | `/api/checkout/sessions` | `{seatId, userId, amount}` | `{sessionId, checkoutUrl}` |
 | `GET`  | `/api/checkout/sessions/:id` | — | `{seatId, amount}` / `404` |
 | `POST` | `/api/checkout/sessions/:id/pay` | `{cardNumber}` | `{status:"success"\|"failed"}` / `400` / `404` |
 
@@ -247,6 +247,7 @@ The trade-off is explicit: this setup is optimized for **reviewer verifiability*
 - **CORS:** each API has an explicit origin allowlist. Not `*`.
 - **Input validation:** `class-validator` on all DTOs (NestJS `ValidationPipe` runs globally). Card number format validated via regex before any business logic.
 - **Seat double-booking:** prevented by `SELECT ... FOR UPDATE` inside a transaction. The reservation row is locked between SELECT and UPDATE, so two concurrent requests serialize.
+- **Stale-payment webhook isolation:** the webhook UPDATE is anchored to `AND assigned_to_user_id = $userId`. A late payment event from User A cannot confirm or cancel the current reservation of User B even if the seat is back in `PENDING_PAYMENT` state. The `userId` is embedded in the checkout session at creation time and returned in the webhook payload.
 
 
 ### Threat model notes
@@ -267,9 +268,10 @@ Concrete failure scenarios and what the system does in each case.
 | **User starts payment and closes the tab** | Seat sits in `PENDING_PAYMENT`. Cron worker releases it after 5 minutes (`locked_at < NOW() - 5min`). | The user can refresh and try again, or someone else can take the seat after the lock expires. |
 | **Webhook from payment-api never arrives** | reservation-api never sees the success/failure event. Cron releases the seat after 5 minutes. | The user has paid (or failed to pay) at payment-api but reservation-api doesn't know — see "known reconciliation gap" below. |
 | **Webhook arrives with invalid signature** | reservation-api rejects with `401 Unauthorized`. Seat unchanged. | Verified by unit test. In production this should also trigger an alert. |
-| **Webhook arrives for a seat no longer in `PENDING_PAYMENT`** | The UPDATE clause includes `AND status = 'PENDING_PAYMENT'`. Rowcount is 0; the webhook is effectively a no-op. Response is still `{received:true}`. | This makes the webhook **idempotent** for the happy path — duplicate deliveries don't double-confirm. |
+| **Webhook arrives for a seat no longer in `PENDING_PAYMENT`** | The UPDATE clause includes `AND status = 'PENDING_PAYMENT' AND assigned_to_user_id = $userId`. Rowcount is 0; the webhook is effectively a no-op. Response is still `{received:true}`. | This makes the webhook idempotent for the happy path — duplicate deliveries don't double-confirm. |
 | **Duplicate webhook for an already-confirmed seat** | Same as above — UPDATE matches no rows. | A more rigorous solution would track `(webhook_id, status)` so duplicates are observable, not just absorbed. |
-| **Late webhook for a seat that timed out and is now booked by someone else** | Webhook UPDATE matches no rows; the second user keeps the seat; the first user has paid at payment-api with no corresponding reservation. **This is the known reconciliation gap.** See below. | |
+| **Stale webhook from User A arrives while seat is `PENDING_PAYMENT` for User B** | The `AND assigned_to_user_id = $userId` clause prevents the match. User B's reservation is untouched. Response is still `{received:true}`. | Each webhook is anchored to the checkout session owner via `assigned_to_user_id`, so a late payment by User A cannot confirm or cancel User B's active reservation. |
+| **Late webhook for a seat that timed out and is now `CONFIRMED` by someone else** | Webhook UPDATE matches no rows on both `status` and `assigned_to_user_id`; the second user keeps the seat; the first user has paid at payment-api with no corresponding reservation. **This is the known reconciliation gap.** See below. | |
 
 ### The reconciliation gap (known limitation)
 

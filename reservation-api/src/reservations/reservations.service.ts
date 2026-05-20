@@ -62,7 +62,7 @@ export class ReservationsService {
       const response = await fetch(`${this.paymentApiUrl}/api/checkout/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seatId: dto.seatId, amount: this.reservationAmount }),
+        body: JSON.stringify({ seatId: dto.seatId, userId, amount: this.reservationAmount }),
       });
 
       if (!response.ok) throw new Error(MESSAGES.reservations.paymentApiError);

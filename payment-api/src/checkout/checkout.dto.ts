@@ -8,6 +8,10 @@ export class CreateSessionDto {
   @IsNotEmpty()
   seatId: string;
 
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
   @IsNumber()
   @IsPositive()
   amount: number;

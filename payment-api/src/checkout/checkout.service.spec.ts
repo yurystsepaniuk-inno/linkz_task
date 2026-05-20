@@ -44,13 +44,13 @@ describe('CheckoutService', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('creates a session and returns sessionId + checkoutUrl', () => {
-    const result = service.createSession({ seatId: 'A1', amount: 10 });
+    const result = service.createSession({ seatId: 'A1', userId: 'user-1', amount: 10 });
     expect(result.sessionId.startsWith(SESSION_ID_PREFIX)).toBe(true);
     expect(result.checkoutUrl).toContain(`/checkout/${SESSION_ID_PREFIX}`);
   });
 
   it('retrieves an existing session', () => {
-    const { sessionId } = service.createSession({ seatId: 'A1', amount: 10 });
+    const { sessionId } = service.createSession({ seatId: 'A1', userId: 'user-1', amount: 10 });
     const session = service.getSession(sessionId);
     expect(session).toEqual({ seatId: 'A1', amount: 10 });
   });
@@ -60,7 +60,7 @@ describe('CheckoutService', () => {
   });
 
   it('pay with 4000 → success + webhook called with payment.succeeded + valid signature', async () => {
-    const { sessionId } = service.createSession({ seatId: 'A1', amount: 10 });
+    const { sessionId } = service.createSession({ seatId: 'A1', userId: 'user-1', amount: 10 });
 
     let capturedSig = '';
     let capturedBody = '';
@@ -79,10 +79,11 @@ describe('CheckoutService', () => {
     const parsed = JSON.parse(capturedBody);
     expect(parsed.event).toBe(PAYMENT_EVENT.SUCCEEDED);
     expect(parsed.seatId).toBe('A1');
+    expect(parsed.userId).toBe('user-1');
   });
 
   it('pay with 5000 → failed + webhook called with payment.failed', async () => {
-    const { sessionId } = service.createSession({ seatId: 'A2', amount: 10 });
+    const { sessionId } = service.createSession({ seatId: 'A2', userId: 'user-2', amount: 10 });
 
     let capturedBody = '';
     jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
@@ -95,6 +96,7 @@ describe('CheckoutService', () => {
 
     const parsed = JSON.parse(capturedBody);
     expect(parsed.event).toBe(PAYMENT_EVENT.FAILED);
+    expect(parsed.userId).toBe('user-2');
   });
 
   it('throws 404 for unknown session on pay', async () => {
@@ -104,7 +106,7 @@ describe('CheckoutService', () => {
   });
 
   it('throws 400 for invalid card', async () => {
-    const { sessionId } = service.createSession({ seatId: 'A1', amount: 10 });
+    const { sessionId } = service.createSession({ seatId: 'A1', userId: 'user-1', amount: 10 });
     await expect(service.pay(sessionId, { cardNumber: '1234123412341234' })).rejects.toThrow(
       BadRequestException,
     );
