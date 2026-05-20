@@ -16,6 +16,7 @@ export const ERROR_CODE = {
 } as const;
 
 export const SIGNATURE_HEADER = 'x-signature';
+export const API_KEY_HEADER = 'x-api-key';
 
 export const RESERVATION_LOCK_TTL_MINUTES = 5;
 export const JWT_EXPIRES_IN = '90d';

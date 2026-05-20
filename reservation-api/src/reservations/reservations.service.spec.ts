@@ -22,6 +22,7 @@ describe('ReservationsService', () => {
   const mockConfig = {
     getOrThrow: jest.fn((key: string) => {
       if (key === 'PAYMENT_API_URL') return 'http://localhost:3003';
+      if (key === 'PAYMENT_API_KEY') return 'test-api-key';
       if (key === 'RESERVATION_AMOUNT') return '10.00';
       throw new Error(`Missing config: ${key}`);
     }),
@@ -44,18 +45,20 @@ describe('ReservationsService', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('happy path returns checkoutUrl', async () => {
+  it('happy path returns checkoutUrl and sends x-api-key header', async () => {
     const client = makeClient({ status: SEAT_STATUS.AVAILABLE });
     mockPool.connect.mockResolvedValueOnce(client);
 
-    jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ checkoutUrl: 'http://localhost:3002/checkout/sess_1' }),
-    } as Response);
+    let capturedHeaders: Record<string, string> = {};
+    jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return { ok: true, json: async () => ({ checkoutUrl: 'http://localhost:3002/checkout/sess_1' }) } as Response;
+    });
 
     const result = await service.create({ seatId: 'A1' }, 'user-1');
     expect(result.checkoutUrl).toBe('http://localhost:3002/checkout/sess_1');
     expect(client.query).toHaveBeenCalledWith('COMMIT');
+    expect(capturedHeaders['x-api-key']).toBe('test-api-key');
   });
 
   it(`throws 409 when seat is ${SEAT_STATUS.PENDING_PAYMENT}`, async () => {

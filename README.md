@@ -40,6 +40,7 @@ cp payment-web/.env.example     payment-web/.env
 ```
 
 > `WEBHOOK_SECRET` must be **identical** in `reservation-api/.env` and `payment-api/.env`.
+> `PAYMENT_API_KEY` (reservation-api) must equal `API_KEY` (payment-api).
 
 ### 3. Migrate and seed
 
@@ -107,11 +108,11 @@ cd payment-web && npm install && npm run dev
 
 ### payment-api (`:3003`)
 
-| Method | Path | Body | Returns |
-|---|---|---|---|
-| `POST` | `/api/checkout/sessions` | `{seatId, userId, amount}` | `{sessionId, checkoutUrl}` |
-| `GET`  | `/api/checkout/sessions/:id` | — | `{seatId, amount}` / `404` |
-| `POST` | `/api/checkout/sessions/:id/pay` | `{cardNumber}` | `{status:"success"\|"failed"}` / `400` / `404` |
+| Method | Path | Auth | Body | Returns |
+|---|---|---|---|---|
+| `POST` | `/api/checkout/sessions` | `x-api-key` | `{seatId, userId, amount}` | `{sessionId, checkoutUrl}` / `401` |
+| `GET`  | `/api/checkout/sessions/:id` | — | — | `{seatId, amount}` / `404` |
+| `POST` | `/api/checkout/sessions/:id/pay` | — | `{cardNumber}` | `{status:"success"\|"failed"}` / `400` / `404` |
 
 Gherkin acceptance criteria are in [docs/acceptance-criteria/](docs/acceptance-criteria/). Scenarios that were considered and explicitly excluded (idempotency keys, refund compensation, DLQ, etc.) are in [docs/scope-not-implemented/](docs/scope-not-implemented/). If there is more time, I would love to implement all scenarious, so that is why it is shared with you under docs.
 
@@ -126,6 +127,7 @@ Gherkin acceptance criteria are in [docs/acceptance-criteria/](docs/acceptance-c
 | `JWT_SECRET` | — | JWT signing key |
 | `WEBHOOK_SECRET` | — | Shared with payment-api for HMAC |
 | `PAYMENT_API_URL` | `http://localhost:3003` | Outbound calls to create checkout sessions |
+| `PAYMENT_API_KEY` | — | Must match `API_KEY` in payment-api; sent as `x-api-key` when creating checkout sessions |
 | `RESERVATION_AMOUNT` | `10.00` | Per-seat price sent to payment-api |
 | `PORT` | `3000` | HTTP port |
 | `CORS_ORIGIN` | `http://localhost:3001` | reservation-web origin |
@@ -134,6 +136,7 @@ Gherkin acceptance criteria are in [docs/acceptance-criteria/](docs/acceptance-c
 | Variable | Default | Purpose |
 |---|---|---|
 | `WEBHOOK_SECRET` | — | Must match reservation-api |
+| `API_KEY` | — | Must match `PAYMENT_API_KEY` in reservation-api; guards `POST /api/checkout/sessions` |
 | `RESERVATION_API_URL` | `http://localhost:3000` | Webhook delivery target |
 | `PUBLIC_BASE_URL` | `http://localhost:3002` | Used to construct `checkoutUrl` |
 | `PORT` | `3003` | HTTP port |
@@ -155,11 +158,23 @@ Gherkin acceptance criteria are in [docs/acceptance-criteria/](docs/acceptance-c
 ## Running Tests
 
 ```bash
-# 40 tests total across the four services
-cd reservation-api && npm test    # 14 tests, 5 suites (Jest)
-cd payment-api     && npm test    #  7 tests, 1 suite  (Jest)
-cd reservation-web && npm test    # 11 tests, 2 suites (Vitest + RTL)
-cd payment-web     && npm test    #  8 tests, 2 suites (Vitest + RTL)
+# reservation-api — 14 tests, 5 suites (Jest)
+cd reservation-api && npm test
+```
+
+```bash
+# payment-api — 10 tests, 2 suites (Jest)
+cd payment-api && npm test
+```
+
+```bash
+# reservation-web — 11 tests, 2 suites (Vitest + RTL)
+cd reservation-web && npm test
+```
+
+```bash
+# payment-web — 8 tests, 2 suites (Vitest + RTL)
+cd payment-web && npm test
 ```
 
 Coverage of service-layer branches is 75–100% across both APIs. Untested files are NestJS framework wiring (controllers, modules, DTOs) — those are intentionally left to e2e/integration tests rather than unit tests.
@@ -193,6 +208,11 @@ This section documents the non-obvious choices and the trade-offs behind them.
 ### In-memory session store in payment-api
 **Why:** payment sessions are short-lived (minutes), and the brief specifies a "mock payment provider." Keeping payment-api isolated mimics a real third-party checkout flow (like Stripe Checkout): the reservation service never exposes or handles sensitive payment credentials — a deliberate data-security boundary.
 **Trade-off:** sessions live only in memory, so they evaporate on restart and payment-api cannot scale horizontally — a second instance wouldn't share session state. Acceptable for a mock; a real provider persists sessions in its own datastore.
+
+### Mock payment-api as a Stripe Checkout stand-in
+**Why:** the integration contract that payment-api implements — create a session, redirect the user to a hosted payment page, receive an HMAC-signed webhook on completion — is structurally identical to [Stripe Checkout](https://stripe.com/docs/checkout). reservation-api creates a session (`POST /api/checkout/sessions`), hands the user a `checkoutUrl`, and waits for a signed webhook; it never touches a card number or payment credential directly. This boundary is the same whether the provider is this mock or Stripe.
+**Production path:** replace payment-api with Stripe Checkout. The `checkoutUrl` becomes a Stripe-hosted URL, the webhook becomes a `Stripe-Signature`-verified event, and the `PAYMENT_API_URL` / `PAYMENT_API_KEY` env vars are replaced with Stripe's `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. No structural changes to reservation-api are required — only the env configuration and the outbound HTTP call.
+**Trade-off:** the shared `x-api-key` used to authenticate reservation-api against payment-api is intentionally lightweight and well-suited to local development. In production with a real provider like Stripe, service-to-service authentication is handled by the provider's own credential scheme, so the `x-api-key` pattern is replaced automatically when Stripe is adopted.
 
 ### One Postgres, both APIs… but only reservation-api touches it
 **Why:** payment-api has no durable state at this scope (see above). When durability is added, payment-api would own its *own* Postgres (separate schema or instance). Database-per-service is the correct boundary even if we cheat in the demo.
@@ -247,6 +267,7 @@ The trade-off is explicit: this setup is optimized for **reviewer verifiability*
 - **CORS:** each API has an explicit origin allowlist. Not `*`.
 - **Input validation:** `class-validator` on all DTOs (NestJS `ValidationPipe` runs globally). Card number format validated via regex before any business logic.
 - **Seat double-booking:** prevented by `SELECT ... FOR UPDATE` inside a transaction. The reservation row is locked between SELECT and UPDATE, so two concurrent requests serialize.
+- **Service-to-service authentication:** `POST /api/checkout/sessions` on payment-api requires a shared `x-api-key` header. Only reservation-api, which holds `PAYMENT_API_KEY`, can create checkout sessions. This prevents an external caller from crafting a session for an arbitrary `seatId`/`userId` and triggering a validly-signed webhook that would confirm or release another user's active reservation. The key never reaches the browser: it lives in reservation-api's server environment and is attached to an outbound server-side fetch call; the browser only ever receives the resulting `checkoutUrl`.
 - **Stale-payment webhook isolation:** the webhook UPDATE is anchored to `AND assigned_to_user_id = $userId`. A late payment event from User A cannot confirm or cancel the current reservation of User B even if the seat is back in `PENDING_PAYMENT` state. The `userId` is embedded in the checkout session at creation time and returned in the webhook payload.
 
 

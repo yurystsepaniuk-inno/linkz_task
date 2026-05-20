@@ -1,6 +1,9 @@
 import { CARD_LAST4 } from './constants';
 
 export const MESSAGES = {
+  auth: {
+    invalidApiKey: 'Invalid or missing API key',
+  },
   sessions: {
     notFound: 'Session not found',
   },

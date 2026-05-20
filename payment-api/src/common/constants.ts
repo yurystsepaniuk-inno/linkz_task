@@ -23,4 +23,5 @@ export const CARD_LAST4 = {
 } as const;
 
 export const SIGNATURE_HEADER = 'x-signature';
+export const API_KEY_HEADER = 'x-api-key';
 export const SESSION_ID_PREFIX = 'sess_';

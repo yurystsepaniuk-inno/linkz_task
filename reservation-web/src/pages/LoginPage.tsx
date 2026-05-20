@@ -63,6 +63,11 @@ export default function LoginPage() {
           {loading ? MESSAGES.login.submitting : MESSAGES.login.submit}
         </button>
       </form>
+      <div className="login-hint">
+        <p><strong>Example credentials:</strong></p>
+        <p>alice@example.com / password123</p>
+        <p>bob@example.com / password123</p>
+      </div>
     </div>
   );
 }

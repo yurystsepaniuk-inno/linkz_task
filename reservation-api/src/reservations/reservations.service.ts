@@ -9,13 +9,14 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
 import { CreateReservationDto } from './reservation.dto';
-import { SEAT_STATUS, ERROR_CODE } from '../common/constants';
+import { SEAT_STATUS, ERROR_CODE, API_KEY_HEADER } from '../common/constants';
 import { MESSAGES } from '../common/messages';
 
 @Injectable()
 export class ReservationsService {
   private readonly logger = new Logger(ReservationsService.name);
   private readonly paymentApiUrl: string;
+  private readonly paymentApiKey: string;
   private readonly reservationAmount: number;
 
   constructor(
@@ -23,6 +24,7 @@ export class ReservationsService {
     config: ConfigService,
   ) {
     this.paymentApiUrl = config.getOrThrow<string>('PAYMENT_API_URL');
+    this.paymentApiKey = config.getOrThrow<string>('PAYMENT_API_KEY');
     this.reservationAmount = parseFloat(config.getOrThrow<string>('RESERVATION_AMOUNT'));
   }
 
@@ -61,7 +63,7 @@ export class ReservationsService {
     try {
       const response = await fetch(`${this.paymentApiUrl}/api/checkout/sessions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', [API_KEY_HEADER]: this.paymentApiKey },
         body: JSON.stringify({ seatId: dto.seatId, userId, amount: this.reservationAmount }),
       });
 

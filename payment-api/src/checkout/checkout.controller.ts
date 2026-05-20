@@ -6,9 +6,11 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { CheckoutService } from './checkout.service';
 import { CreateSessionDto, PayDto } from './checkout.dto';
+import { ApiKeyGuard } from './api-key.guard';
 
 @Controller('api/checkout/sessions')
 export class CheckoutController {
@@ -16,6 +18,7 @@ export class CheckoutController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(ApiKeyGuard)
   createSession(@Body() dto: CreateSessionDto) {
     return this.checkoutService.createSession(dto);
   }
