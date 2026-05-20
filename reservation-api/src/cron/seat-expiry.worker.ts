@@ -13,7 +13,7 @@ export class SeatExpiryWorker {
   @Cron(CronExpression.EVERY_MINUTE)
   async expireStaleReservations() {
     const result = await this.pool.query(
-      `UPDATE seats SET status = $1, assigned_to_user_id = NULL, locked_at = NULL
+      `UPDATE seats SET status = $1, assigned_to_user_id = NULL, session_id = NULL, locked_at = NULL
        WHERE status = $2 AND locked_at < NOW() - ($3 || ' minutes')::interval`,
       [SEAT_STATUS.AVAILABLE, SEAT_STATUS.PENDING_PAYMENT, RESERVATION_LOCK_TTL_MINUTES],
     );

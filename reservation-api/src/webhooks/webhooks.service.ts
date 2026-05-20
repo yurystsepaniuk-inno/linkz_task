@@ -13,6 +13,7 @@ import { MESSAGES } from '../common/messages';
 
 export interface WebhookPayload {
   event: PaymentEvent;
+  sessionId: string;
   seatId: string;
   userId: string;
 }
@@ -38,14 +39,14 @@ export class WebhooksService {
     switch (payload.event) {
       case PAYMENT_EVENT.SUCCEEDED:
         await this.pool.query(
-          'UPDATE seats SET status = $1, locked_at = NULL WHERE id = $2 AND status = $3 AND assigned_to_user_id = $4',
-          [SEAT_STATUS.CONFIRMED, payload.seatId, SEAT_STATUS.PENDING_PAYMENT, payload.userId],
+          'UPDATE seats SET status = $1, locked_at = NULL WHERE id = $2 AND status = $3 AND session_id = $4',
+          [SEAT_STATUS.CONFIRMED, payload.seatId, SEAT_STATUS.PENDING_PAYMENT, payload.sessionId],
         );
         break;
       case PAYMENT_EVENT.FAILED:
         await this.pool.query(
-          'UPDATE seats SET status = $1, assigned_to_user_id = NULL, locked_at = NULL WHERE id = $2 AND status = $3 AND assigned_to_user_id = $4',
-          [SEAT_STATUS.AVAILABLE, payload.seatId, SEAT_STATUS.PENDING_PAYMENT, payload.userId],
+          'UPDATE seats SET status = $1, assigned_to_user_id = NULL, session_id = NULL, locked_at = NULL WHERE id = $2 AND status = $3 AND session_id = $4',
+          [SEAT_STATUS.AVAILABLE, payload.seatId, SEAT_STATUS.PENDING_PAYMENT, payload.sessionId],
         );
         break;
       default:

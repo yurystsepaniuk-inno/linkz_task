@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS seats (
   status TEXT NOT NULL DEFAULT 'AVAILABLE'
     CHECK (status IN ('AVAILABLE', 'PENDING_PAYMENT', 'CONFIRMED')),
   assigned_to_user_id UUID REFERENCES users(id),
+  session_id TEXT,
   locked_at TIMESTAMPTZ
 );
 

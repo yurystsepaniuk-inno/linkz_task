@@ -78,6 +78,7 @@ describe('CheckoutService', () => {
 
     const parsed = JSON.parse(capturedBody);
     expect(parsed.event).toBe(PAYMENT_EVENT.SUCCEEDED);
+    expect(parsed.sessionId).toBe(sessionId);
     expect(parsed.seatId).toBe('A1');
     expect(parsed.userId).toBe('user-1');
   });
@@ -96,6 +97,7 @@ describe('CheckoutService', () => {
 
     const parsed = JSON.parse(capturedBody);
     expect(parsed.event).toBe(PAYMENT_EVENT.FAILED);
+    expect(parsed.sessionId).toBe(sessionId);
     expect(parsed.userId).toBe('user-2');
   });
 

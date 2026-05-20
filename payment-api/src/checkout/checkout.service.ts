@@ -60,7 +60,7 @@ export class CheckoutService {
 
     this.store.update(sessionId, sessionStatus);
 
-    const body = { event, seatId: session.seatId, userId: session.userId };
+    const body = { event, sessionId, seatId: session.seatId, userId: session.userId };
     const rawBody = JSON.stringify(body);
     const secret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
     const signature = createHmac('sha256', secret).update(rawBody).digest('hex');

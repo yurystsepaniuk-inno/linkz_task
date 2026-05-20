@@ -69,12 +69,16 @@ export class ReservationsService {
 
       if (!response.ok) throw new Error(MESSAGES.reservations.paymentApiError);
 
-      const data = (await response.json()) as { checkoutUrl: string };
+      const data = (await response.json()) as { sessionId: string; checkoutUrl: string };
+      await this.pool.query(
+        'UPDATE seats SET session_id = $1 WHERE id = $2',
+        [data.sessionId, dto.seatId],
+      );
       return { checkoutUrl: data.checkoutUrl };
     } catch (err) {
       this.logger.error(`Payment API call failed for seat ${dto.seatId}; releasing lock`, err);
       await this.pool.query(
-        'UPDATE seats SET status = $1, assigned_to_user_id = NULL, locked_at = NULL WHERE id = $2',
+        'UPDATE seats SET status = $1, assigned_to_user_id = NULL, session_id = NULL, locked_at = NULL WHERE id = $2',
         [SEAT_STATUS.AVAILABLE, dto.seatId],
       );
       throw new BadGatewayException(MESSAGES.reservations.paymentServiceUnavailable);
