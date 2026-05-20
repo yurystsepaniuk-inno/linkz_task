@@ -11,12 +11,13 @@ The Gherkin acceptance criteria can be found in [docs/acceptance-criteria/](docs
 1. [Quick Start](#quick-start)
 2. [End-to-End Flow](#end-to-end-flow)
 3. [API Reference](#api-reference)
-4. [Environment Variables](#environment-variables)
-5. [Running Tests](#running-tests)
-6. [Architecture Decisions](#architecture-decisions)
-7. [Deployment](#deployment)
-8. [Security Considerations](#security-considerations)
-9. [Failure Modes & Reliability](#failure-modes--reliability)
+4. [Database Schema](#database-schema)
+5. [Environment Variables](#environment-variables)
+6. [Running Tests](#running-tests)
+7. [Architecture Decisions](#architecture-decisions)
+8. [Deployment](#deployment)
+9. [Security Considerations](#security-considerations)
+10. [Failure Modes & Reliability](#failure-modes--reliability)
 
 
 ## Quick Start
@@ -116,6 +117,40 @@ cd payment-web && npm install && npm run dev
 | `POST` | `/api/checkout/sessions` | `x-api-key` | `{seatId, userId, amount}` | `{sessionId, checkoutUrl}` / `401` |
 | `GET`  | `/api/checkout/sessions/:id` | — | — | `{seatId, amount}` / `404` |
 | `POST` | `/api/checkout/sessions/:id/pay` | — | `{cardNumber}` | `{status:"success"\|"failed"}` / `400` / `404` |
+
+---
+
+## Database Schema
+
+reservation-api owns a single PostgreSQL database with three tables.
+
+```
+users
+├── id            UUID  PK
+├── email         TEXT  UNIQUE NOT NULL
+└── password_hash TEXT  NOT NULL
+
+seats
+├── id     TEXT  PK
+└── status TEXT  NOT NULL  CHECK (AVAILABLE | PENDING_PAYMENT | CONFIRMED)
+
+reservations
+├── id         UUID        PK
+├── seat_id    TEXT        FK → seats.id   NOT NULL
+├── user_id    UUID        FK → users.id   NOT NULL
+├── session_id TEXT        (payment-provider session; set after checkout session is created)
+├── status     TEXT        NOT NULL  CHECK (PENDING_PAYMENT | CONFIRMED | FAILED | EXPIRED)
+├── created_at TIMESTAMPTZ NOT NULL  DEFAULT NOW()
+└── locked_at  TIMESTAMPTZ (set at reservation time; swept by cron after 5 min)
+```
+
+**Indexes on `reservations`:**
+
+| Index | Columns | Purpose |
+|---|---|---|
+| `reservations_sweep_idx` | `(status, locked_at)` WHERE `PENDING_PAYMENT` | cron expiry sweep |
+| `reservations_user_idx` | `user_id` | lookup by user |
+| `reservations_session_idx` | `session_id` WHERE NOT NULL | webhook matching |
 
 ---
 
