@@ -111,4 +111,22 @@ describe('CheckoutService', () => {
       BadRequestException,
     );
   });
+
+  it('throws 400 when replaying an already-paid session', async () => {
+    const { sessionId } = service.createSession({ seatId: 'A1', userId: 'user-1', amount: 10 });
+    jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as Response);
+    await service.pay(sessionId, { cardNumber: '4111111111114000' });
+    await expect(service.pay(sessionId, { cardNumber: '4111111111114000' })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('throws 400 when replaying an already-failed session', async () => {
+    const { sessionId } = service.createSession({ seatId: 'A1', userId: 'user-1', amount: 10 });
+    jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as Response);
+    await service.pay(sessionId, { cardNumber: '5000000000005000' });
+    await expect(service.pay(sessionId, { cardNumber: '4111111111114000' })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
 });

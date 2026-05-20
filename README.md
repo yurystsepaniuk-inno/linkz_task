@@ -163,7 +163,7 @@ cd reservation-api && npm test
 ```
 
 ```bash
-# payment-api — 10 tests, 2 suites (Jest)
+# payment-api — 18 tests, 3 suites (Jest)
 cd payment-api && npm test
 ```
 
@@ -207,6 +207,7 @@ This section documents the non-obvious choices and the trade-offs behind them.
 
 ### In-memory session store in payment-api
 **Why:** payment sessions are short-lived (minutes), and the brief specifies a "mock payment provider." Keeping payment-api isolated mimics a real third-party checkout flow (like Stripe Checkout): the reservation service never exposes or handles sensitive payment credentials — a deliberate data-security boundary.
+**Session lifecycle:** each session has a 30-minute TTL enforced at read time (`SessionsStore.get()` evicts and returns `undefined` for expired entries). Sessions are also single-use: `pay()` rejects any session whose status is no longer `PENDING`, preventing replay after a `PAID` or `FAILED` outcome.
 **Trade-off:** sessions live only in memory, so they evaporate on restart and payment-api cannot scale horizontally — a second instance wouldn't share session state. Acceptable for a mock; a real provider persists sessions in its own datastore.
 
 ### Mock payment-api as a Stripe Checkout stand-in
@@ -269,6 +270,8 @@ The trade-off is explicit: this setup is optimized for **reviewer verifiability*
 - **Seat double-booking:** prevented by `SELECT ... FOR UPDATE` inside a transaction. The reservation row is locked between SELECT and UPDATE, so two concurrent requests serialize.
 - **Service-to-service authentication:** `POST /api/checkout/sessions` on payment-api requires a shared `x-api-key` header. Only reservation-api, which holds `PAYMENT_API_KEY`, can create checkout sessions. This prevents an external caller from crafting a session for an arbitrary `seatId`/`userId` and triggering a validly-signed webhook that would confirm or release another user's active reservation. The key never reaches the browser: it lives in reservation-api's server environment and is attached to an outbound server-side fetch call; the browser only ever receives the resulting `checkoutUrl`.
 - **Stale-payment webhook isolation:** the webhook UPDATE is anchored to `AND assigned_to_user_id = $userId`. A late payment event from User A cannot confirm or cancel the current reservation of User B even if the seat is back in `PENDING_PAYMENT` state. The `userId` is embedded in the checkout session at creation time and returned in the webhook payload.
+- **Payment session single-use:** `POST /api/checkout/sessions/:id/pay` checks that the session status is still `PENDING` before processing. A session that is already `PAID` or `FAILED` is rejected with `400 alreadyProcessed`. This prevents an attacker from replaying an old session (e.g. calling `pay()` a second time with a different card) to fire a second validly-signed webhook — which could corrupt seat state if the same user had re-booked the same seat in the interim.
+- **Payment session TTL:** checkout sessions expire after 30 minutes. `get()` evicts and returns `undefined` for expired sessions, so both the hosted checkout page and `pay()` return `404` on stale links. This bounds the window in which a session-replay is possible even if the single-use guard were absent.
 
 
 ### Threat model notes
@@ -293,6 +296,8 @@ Concrete failure scenarios and what the system does in each case.
 | **Duplicate webhook for an already-confirmed seat** | Same as above — UPDATE matches no rows. | A more rigorous solution would track `(webhook_id, status)` so duplicates are observable, not just absorbed. |
 | **Stale webhook from User A arrives while seat is `PENDING_PAYMENT` for User B** | The `AND assigned_to_user_id = $userId` clause prevents the match. User B's reservation is untouched. Response is still `{received:true}`. | Each webhook is anchored to the checkout session owner via `assigned_to_user_id`, so a late payment by User A cannot confirm or cancel User B's active reservation. |
 | **Late webhook for a seat that timed out and is now `CONFIRMED` by someone else** | Webhook UPDATE matches no rows on both `status` and `assigned_to_user_id`; the second user keeps the seat; the first user has paid at payment-api with no corresponding reservation. **This is the known reconciliation gap.** See below. | |
+| **User calls `pay()` a second time on an already-PAID or FAILED session** | payment-api rejects with `400 alreadyProcessed` before any webhook is fired. No second webhook is ever sent to reservation-api. | Without this guard, a same-user re-booking of the same seat followed by replaying the old session would match the UPDATE SQL and corrupt seat state. Verified by unit tests. |
+| **User accesses checkout page or calls `pay()` on a session older than 30 minutes** | `SessionsStore.get()` evicts the session and returns `undefined`; the response is `404 Session not found`. | Bounds the session-replay window even if an application-level guard were absent. |
 
 ### The reconciliation gap (known limitation)
 

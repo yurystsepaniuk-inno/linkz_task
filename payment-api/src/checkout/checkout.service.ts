@@ -42,6 +42,9 @@ export class CheckoutService {
   async pay(sessionId: string, dto: PayDto): Promise<{ status: PaymentResult }> {
     const session = this.store.get(sessionId);
     if (!session) throw new NotFoundException(MESSAGES.sessions.notFound);
+    if (session.status !== SESSION_STATUS.PENDING) {
+      throw new BadRequestException(MESSAGES.sessions.alreadyProcessed);
+    }
 
     const digits = dto.cardNumber.replace(/\D/g, '');
     const last4 = digits.slice(-4);

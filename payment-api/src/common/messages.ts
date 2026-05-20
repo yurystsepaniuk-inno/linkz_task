@@ -6,6 +6,8 @@ export const MESSAGES = {
   },
   sessions: {
     notFound: 'Session not found',
+    alreadyProcessed: 'Session has already been processed',
+    expired: 'Session has expired',
   },
   payment: {
     invalidCardFormat:
