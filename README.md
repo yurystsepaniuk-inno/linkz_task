@@ -344,7 +344,7 @@ Concrete failure scenarios and what the system does in each case.
 If a webhook is delayed past the 5-minute expiry **and** another user takes the seat in the interim, the original user's payment at payment-api has no matching reservation. Today this user would need to be refunded manually.
 
 The fully-engineered solution requires:
-1. ~~A `payments` table~~ — the `reservations` table already records who attempted a reservation and with which `session_id` before payment is initiated. An EXPIRED reservation whose `session_id` matches a late incoming webhook can be identified.
+1. The `reservations` table already records who attempted a reservation and with which `session_id` before payment is initiated. An EXPIRED reservation whose `session_id` matches a late incoming webhook can be identified.
 2. On late-webhook arrival, detect that the matched reservation is in `EXPIRED` state (not `PENDING_PAYMENT`) and trigger an automated refund via the payment provider.
 3. A "dead-letter" / human-review queue for refunds that themselves fail.
 
