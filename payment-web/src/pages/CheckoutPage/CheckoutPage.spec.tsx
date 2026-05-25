@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import CheckoutPage from './CheckoutPage';
-import { MESSAGES } from '../messages';
-import { PAYMENT_ERROR_CODE } from '../constants';
+import { CheckoutPage } from './CheckoutPage';
+import { MESSAGES, PAYMENT_ERROR_CODE } from '../../consts';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => {

@@ -1,8 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
-import CheckoutPage from './pages/CheckoutPage';
-import ResultPage from './pages/ResultPage';
+import { CheckoutPage, ResultPage } from './pages';
 
-export default function App() {
+export function App() {
   return (
     <Routes>
       <Route path="/checkout/:sessionId" element={<CheckoutPage />} />

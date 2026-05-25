@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import ResultPage from './ResultPage';
-import { MESSAGES } from '../messages';
+import { ResultPage } from './ResultPage';
+import { MESSAGES } from '../../consts';
 
 function renderResult(query: string) {
   return render(

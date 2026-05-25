@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import SeatsPage from './SeatsPage';
+import { SeatsPage } from './SeatsPage';
 
 // Clerk's <UserButton> renders an authenticated avatar widget; stub it so the
 // test stays focused on seat-booking behaviour.
@@ -8,16 +8,18 @@ vi.mock('@clerk/react', () => ({
   UserButton: () => <div data-testid="user-button" />,
 }));
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
-// Stable instance so SeatsPage's `useCallback([api])` doesn't recreate
-// fetchSeats every render and re-trigger the useEffect.
-const mockApiInstance = {
-  get: (...args: unknown[]) => mockGet(...args),
-  post: (...args: unknown[]) => mockPost(...args),
+const mockList = vi.fn();
+const mockReserve = vi.fn();
+// Stable instance so useSeats' useCallback([service]) doesn't recreate
+// refresh every render and re-trigger the useEffect.
+const mockService = {
+  list: (...args: unknown[]) => mockList(...args),
+  reserve: (...args: unknown[]) => mockReserve(...args),
 };
-vi.mock('../api', () => ({
-  useApi: () => mockApiInstance,
+// Mock the domain service rather than the underlying axios client — that's
+// the boundary the page interacts with via the useSeats hook.
+vi.mock('../../services', () => ({
+  useSeatsService: () => mockService,
 }));
 
 const SEATS = [
@@ -33,7 +35,7 @@ function renderSeats() {
 describe('SeatsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGet.mockResolvedValue({ data: SEATS });
+    mockList.mockResolvedValue(SEATS);
   });
 
   it('renders 3 seat boxes', async () => {
@@ -71,7 +73,7 @@ describe('SeatsPage', () => {
       value: { ...window.location, assign: assignFn },
       writable: true,
     });
-    mockPost.mockResolvedValueOnce({ data: { checkoutUrl: 'http://localhost:3002/checkout/sess_1' } });
+    mockReserve.mockResolvedValueOnce({ checkoutUrl: 'http://localhost:3002/checkout/sess_1' });
 
     renderSeats();
     await waitFor(() => screen.getByTestId('seat-A1'));
@@ -88,7 +90,7 @@ describe('SeatsPage', () => {
       isAxiosError: true,
       response: { status: 409 },
     });
-    mockPost.mockRejectedValueOnce(err);
+    mockReserve.mockRejectedValueOnce(err);
 
     renderSeats();
     await waitFor(() => screen.getByTestId('seat-A1'));
@@ -98,7 +100,7 @@ describe('SeatsPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('toast')).toBeInTheDocument();
     });
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(mockList).toHaveBeenCalledTimes(2);
   });
 
   it('Book on non-409 error shows a generic toast and refetches', async () => {
@@ -106,7 +108,7 @@ describe('SeatsPage', () => {
       isAxiosError: true,
       response: { status: 502 },
     });
-    mockPost.mockRejectedValueOnce(err);
+    mockReserve.mockRejectedValueOnce(err);
 
     renderSeats();
     await waitFor(() => screen.getByTestId('seat-A1'));
@@ -116,12 +118,12 @@ describe('SeatsPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('toast')).toBeInTheDocument();
     });
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(mockList).toHaveBeenCalledTimes(2);
   });
 
   it('fetchSeats failure shows a toast', async () => {
-    mockGet.mockReset();
-    mockGet.mockRejectedValueOnce(
+    mockList.mockReset();
+    mockList.mockRejectedValueOnce(
       Object.assign(new Error('Server error'), {
         isAxiosError: true,
         response: { status: 500 },
@@ -138,6 +140,6 @@ describe('SeatsPage', () => {
     renderSeats();
     await waitFor(() => screen.getByTestId('seat-A1'));
     fireEvent.click(screen.getByTestId('refresh-button'));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
   });
 });

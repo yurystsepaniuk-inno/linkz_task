@@ -1,0 +1,3 @@
+export const ERROR_CODE = {
+  SEAT_ALREADY_OCCUPIED: 'SEAT_ALREADY_OCCUPIED',
+} as const;

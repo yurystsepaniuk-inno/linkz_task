@@ -1,0 +1,1 @@
+export { SeatsPage } from './SeatsPage';

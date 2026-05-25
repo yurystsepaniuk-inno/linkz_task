@@ -1,0 +1,1 @@
+export { ResultPendingBanner } from './ResultPendingBanner';

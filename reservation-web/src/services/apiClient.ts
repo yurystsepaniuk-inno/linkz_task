@@ -20,7 +20,7 @@ if (!baseURL) throw new Error('VITE_API_URL is required');
  *   - Response interceptor: on 401, sign out so Clerk's reactive state
  *     flips and <App> renders the LandingPage instead of a blank screen.
  */
-export function useApi(): AxiosInstance {
+export function useApiClient(): AxiosInstance {
   const { getToken } = useAuth();
   const { signOut } = useClerk();
 

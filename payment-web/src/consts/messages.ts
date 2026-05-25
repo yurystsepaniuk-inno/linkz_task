@@ -1,4 +1,4 @@
-import { CARD_LAST4 } from './constants';
+import { CARD_LAST4 } from './card';
 
 export const MESSAGES = {
   checkout: {
@@ -28,5 +28,8 @@ export const MESSAGES = {
     failedPendingDetail:
       'Your card was declined, but releasing the seat is still in progress. The seat will become available again shortly.',
     backButton: 'Back To Seat Reservation',
+    pendingSync: 'Reservation system sync in progress…',
+    pendingExhausted:
+      'The reservation system hasn’t confirmed yet. Refresh the seat page to check the latest status; our reconciliation cron will resolve any mismatch within a few minutes.',
   },
 } as const;

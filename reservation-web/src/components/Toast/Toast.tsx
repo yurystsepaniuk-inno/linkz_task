@@ -2,10 +2,10 @@ import { useEffect } from 'react';
 
 interface ToastProps {
   message: string;
-  onClose: () => void;
+  onClose: VoidFunction;
 }
 
-export default function Toast({ message, onClose }: ToastProps) {
+export function Toast({ message, onClose }: ToastProps) {
   useEffect(() => {
     const t = setTimeout(onClose, 3000);
     return () => clearTimeout(t);

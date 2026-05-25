@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ClerkProvider } from '@clerk/react';
-import App from './App';
+import { App } from './App';
 import './styles.css';
 
 // @clerk/react@6 requires `publishableKey` in its types; we source it from

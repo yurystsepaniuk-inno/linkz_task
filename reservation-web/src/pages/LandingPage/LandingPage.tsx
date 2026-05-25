@@ -1,7 +1,7 @@
 import { SignInButton, SignUpButton } from '@clerk/react';
-import { MESSAGES } from '../messages';
+import { MESSAGES } from '../../consts';
 
-export default function LandingPage() {
+export function LandingPage() {
   return (
     <div className="page page--narrow">
       <h1>{MESSAGES.landing.title}</h1>

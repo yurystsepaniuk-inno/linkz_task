@@ -1,0 +1,1 @@
+export { seatClassName } from './seatClassName';
