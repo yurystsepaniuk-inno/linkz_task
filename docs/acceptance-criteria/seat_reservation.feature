@@ -3,9 +3,9 @@ Feature: Public Seat Reservation Platform
   Background:
     Given the seat layout is initialized with available seats: "A1", "A2", "A3"
 
-  Scenario: Reject checkout session creation when user session exceeds the 90-day expiry limit
-    Given a user has an expired session token issued 91 days ago
-    When the user sends a POST request to "/api/reservations" for seat "A1" with an expired token
+  Scenario: Reject checkout session creation when the user's session token is expired
+    Given a user presents an expired session token
+    When the user sends a POST request to "/api/reservations" for seat "A1" with the expired token
     Then the API should respond with a 401 Unauthorized status
     And the system must not modify the database or contact the payment provider
 
