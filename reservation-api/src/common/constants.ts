@@ -36,11 +36,24 @@ export const AUDIT_EVENT = {
   // ledger explicitly shows the redundancy rather than just a NOOP.
   DUPLICATE_WEBHOOK: 'DUPLICATE_WEBHOOK',
   RESERVATION_EXPIRED: 'RESERVATION_EXPIRED',
-  // Reconciliation cron found a charged session whose seat was never
-  // confirmed (webhook lost, payment-api retries exhausted, …) and asked
-  // payment-api for a refund. Outcome SUCCESS = refund accepted; FAILED =
-  // payment-api rejected (e.g. session not actually PAID).
+  // Reconciliation cron successfully issued a refund — payment-api accepted
+  // the request and the money is on its way back to the buyer. Terminal:
+  // the orphan SELECT excludes any session with this row so the cron does
+  // not re-refund. Only written when the HTTP call to /api/refunds returned
+  // 2xx with a parseable body.
   REFUND_INITIATED: 'REFUND_INITIATED',
+  // Reconciliation cron tried to refund and the call did NOT succeed
+  // (timeout, network error, 5xx, 4xx rejection, unparseable response).
+  // *Non-terminal* — the orphan SELECT still returns the session on the
+  // next tick so the refund is retried. Capped by REFUND_MAX_ATTEMPTS;
+  // past the cap a REFUND_GAVE_UP row is written instead to stop retrying.
+  REFUND_ATTEMPT_FAILED: 'REFUND_ATTEMPT_FAILED',
+  // Terminal failure after REFUND_MAX_ATTEMPTS failed attempts. Operator
+  // intervention required — the orphan SELECT excludes the session so the
+  // worker stops looping, but the money is still with payment-api. Surface
+  // via the operational counter `reconciliation_refunds_total{outcome="gave_up"}`
+  // and alert on it.
+  REFUND_GAVE_UP: 'REFUND_GAVE_UP',
   // Reconciliation cron looked at an orphan and concluded no refund is
   // owed (payment-api status was FAILED, or PENDING beyond the upper-bound
   // age). Recorded so the orphan SELECT excludes it on subsequent ticks —
@@ -74,3 +87,10 @@ export const RECONCILIATION_GRACE_MINUTES = 10;
 // after this many hours is effectively abandoned and gets a
 // RECONCILIATION_DISMISSED audit row so it drops out of the orphan set.
 export const RECONCILIATION_PENDING_MAX_AGE_HOURS = 24;
+
+// How many transient refund failures we tolerate per session before giving
+// up and writing a terminal REFUND_GAVE_UP audit row. At 5-minute cron
+// cadence, 5 attempts ≈ 25 minutes of upstream trouble — long enough to
+// ride out a normal payment-api hiccup, short enough that a genuinely
+// broken session reaches an operator instead of looping forever.
+export const REFUND_MAX_ATTEMPTS = 5;

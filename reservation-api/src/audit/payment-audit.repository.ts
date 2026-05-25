@@ -107,6 +107,20 @@ export class PaymentAuditRepository {
     return rows[0]?.exists === true;
   }
 
+  async countByEvent(
+    sessionId: string,
+    eventType: AuditEvent,
+    db: Queryable = this.pool,
+  ): Promise<number> {
+    const { rows } = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM payment_transactions
+        WHERE session_id = $1 AND event_type = $2`,
+      [sessionId, eventType],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async findByReservation(
     reservationId: string,
     db: Queryable = this.pool,

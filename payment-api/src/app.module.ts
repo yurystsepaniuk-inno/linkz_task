@@ -6,6 +6,7 @@ import { trace, context } from '@opentelemetry/api';
 import { DatabaseModule } from './database/database.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { RefundsModule } from './refunds/refunds.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { RefundsModule } from './refunds/refunds.module';
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    HealthModule,
     CheckoutModule,
     RefundsModule,
   ],

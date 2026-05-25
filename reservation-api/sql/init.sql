@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   event_type      TEXT NOT NULL CHECK (event_type IN (
                     'CHECKOUT_SESSION_CREATED', 'WEBHOOK_RECEIVED', 'PAYMENT_SUCCEEDED',
                     'PAYMENT_FAILED', 'SIGNATURE_REJECTED', 'DUPLICATE_WEBHOOK',
-                    'RESERVATION_EXPIRED', 'REFUND_INITIATED', 'RECONCILIATION_DISMISSED')),
+                    'RESERVATION_EXPIRED', 'REFUND_INITIATED', 'REFUND_ATTEMPT_FAILED',
+                    'REFUND_GAVE_UP', 'RECONCILIATION_DISMISSED')),
   outcome         TEXT NOT NULL CHECK (outcome IN ('SUCCESS', 'FAILED', 'REJECTED', 'NOOP')),
   signature_valid BOOLEAN,
   raw_payload     JSONB,
@@ -97,7 +98,8 @@ ALTER TABLE payment_transactions
   CHECK (event_type IN (
     'CHECKOUT_SESSION_CREATED', 'WEBHOOK_RECEIVED', 'PAYMENT_SUCCEEDED',
     'PAYMENT_FAILED', 'SIGNATURE_REJECTED', 'DUPLICATE_WEBHOOK',
-    'RESERVATION_EXPIRED', 'REFUND_INITIATED', 'RECONCILIATION_DISMISSED'));
+    'RESERVATION_EXPIRED', 'REFUND_INITIATED', 'REFUND_ATTEMPT_FAILED',
+    'REFUND_GAVE_UP', 'RECONCILIATION_DISMISSED'));
 
 -- Idempotent upgrade for databases created before this change: the original
 -- FK was created without `ON DELETE SET NULL`. The ledger is the immutable

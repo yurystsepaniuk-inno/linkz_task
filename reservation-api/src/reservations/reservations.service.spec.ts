@@ -12,7 +12,6 @@ import { PaymentAuditRepository } from '../audit/payment-audit.repository';
 import { TransactionRunner } from '../database/transaction.runner';
 import {
   SEAT_STATUS,
-  RESERVATION_STATUS,
   ERROR_CODE,
   AUDIT_EVENT,
 } from '../common/constants';
@@ -24,7 +23,6 @@ describe('ReservationsService', () => {
     setSeatStatus: jest.Mock;
     insertPendingReservation: jest.Mock;
     attachSessionId: jest.Mock;
-    setReservationStatus: jest.Mock;
     existsForUser: jest.Mock;
     releaseSeatAndFailReservation: jest.Mock;
   };
@@ -51,7 +49,6 @@ describe('ReservationsService', () => {
       setSeatStatus: jest.fn().mockResolvedValue(undefined),
       insertPendingReservation: jest.fn().mockResolvedValue('res-1'),
       attachSessionId: jest.fn().mockResolvedValue(undefined),
-      setReservationStatus: jest.fn().mockResolvedValue(undefined),
       existsForUser: jest.fn(),
       releaseSeatAndFailReservation: jest.fn().mockResolvedValue(undefined),
     };
@@ -143,12 +140,6 @@ describe('ReservationsService', () => {
     );
     // The atomic rollback used the repo, not two separate UPDATEs.
     expect(reservationsRepo.releaseSeatAndFailReservation).toHaveBeenCalledTimes(1);
-    // Sanity: rollback path advances reservation to FAILED via the repo's helper.
-    // (No direct setReservationStatus call on the failure path — release+fail is one method.)
-    expect(reservationsRepo.setReservationStatus).not.toHaveBeenCalledWith(
-      'res-1',
-      RESERVATION_STATUS.FAILED,
-    );
   });
 
   describe('getAudit', () => {

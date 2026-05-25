@@ -12,7 +12,7 @@ import {
 import { CheckoutService } from './checkout.service';
 import { WebhookDeliveryService } from './webhook-delivery.service';
 import { CreateSessionDto, PayDto } from './checkout.dto';
-import { ApiKeyGuard } from './api-key.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { PollRateLimitGuard } from './poll-rate-limit.guard';
 import { DELIVERY_STATUS, PAYMENT_ERROR_CODE } from '../common/constants';
 import { MESSAGES } from '../common/messages';

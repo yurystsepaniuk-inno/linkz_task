@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { RefundsService } from './refunds.service';
 import { CreateRefundDto } from './refund.dto';
-import { ApiKeyGuard } from '../checkout/api-key.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 
 @Controller('api/refunds')
 @UseGuards(ApiKeyGuard)

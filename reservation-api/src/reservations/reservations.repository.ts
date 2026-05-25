@@ -6,7 +6,6 @@ import {
   SEAT_STATUS,
   RESERVATION_STATUS,
   SeatStatus,
-  ReservationStatus,
 } from '../common/constants';
 
 /**
@@ -60,17 +59,6 @@ export class ReservationsRepository {
   ): Promise<void> {
     await db.query('UPDATE reservations SET session_id = $1 WHERE id = $2', [
       sessionId,
-      reservationId,
-    ]);
-  }
-
-  async setReservationStatus(
-    reservationId: string,
-    status: ReservationStatus,
-    db: Queryable,
-  ): Promise<void> {
-    await db.query('UPDATE reservations SET status = $1 WHERE id = $2', [
-      status,
       reservationId,
     ]);
   }

@@ -6,6 +6,7 @@ import {
   AUDIT_OUTCOME,
   API_KEY_HEADER,
   RECONCILIATION_PENDING_MAX_AGE_HOURS,
+  REFUND_MAX_ATTEMPTS,
 } from '../common/constants';
 import { PaymentAuditRepository } from '../audit/payment-audit.repository';
 import {
@@ -30,7 +31,12 @@ import { reconciliationRefundsTotal } from '../observability/metrics';
  * This worker is the *slow* path. Every 5 minutes it asks: "are there any
  * reservations we gave up on, where the corresponding session on payment-api
  * actually got paid?" If yes, it asks payment-api for a refund (idempotent on
- * session_id) and writes one REFUND_INITIATED row to the audit ledger.
+ * session_id). On success it writes one REFUND_INITIATED row to the audit
+ * ledger (terminal — the orphan gate excludes it forever after). On failure
+ * it writes a *non-terminal* REFUND_ATTEMPT_FAILED row so the same orphan
+ * gets retried on the next tick. After REFUND_MAX_ATTEMPTS failures it
+ * writes a terminal REFUND_GAVE_UP row to stop looping and surface the
+ * stuck session via `reconciliation_refunds_total{outcome="gave_up"}`.
  *
  * Grace window: a fresh expiry might still have a webhook in flight. We wait
  * `RECONCILIATION_GRACE_MINUTES` (longer than the seat-lock TTL) before
@@ -102,45 +108,86 @@ export class ReconciliationWorker {
     }
 
     const refund = await this.requestRefund(row.session_id);
-    // `dedupeBySession: true` — the `NOT EXISTS` candidate gate dedupes
-    // across cron ticks (once a REFUND_INITIATED row exists, the orphan
-    // SELECT no longer returns this session). It does NOT dedupe two
-    // replicas in the *same* tick: both gates pass while neither audit row
-    // is written yet, both proceed to refund, and both then try to write.
-    // The partial unique index `ux_refund_initiated_one_per_session` plus
-    // ON CONFLICT DO NOTHING make the loser's INSERT a no-op, so the ledger
-    // gets exactly one REFUND_INITIATED row per session — matching the
-    // single refund payment-api actually issued (refunds there are
-    // idempotent on session_id).
-    await this.audit.record(
-      {
-        eventType: AUDIT_EVENT.REFUND_INITIATED,
-        outcome: refund.ok ? AUDIT_OUTCOME.SUCCESS : AUDIT_OUTCOME.FAILED,
-        reservationId: row.id,
-        sessionId: row.session_id,
-        seatId: row.seat_id,
-        userId: row.user_id,
-        amount: session.amount,
-        rawPayload: {
-          reason: 'orphaned PAID session — seat never confirmed',
-          refundResponse: refund.body,
-        },
-      },
-      undefined,
-      { dedupeBySession: true },
-    );
-
-    reconciliationRefundsTotal.add(1, {
-      outcome: refund.ok ? 'initiated' : 'failed',
-    });
 
     if (refund.ok) {
+      // `dedupeBySession: true` — the `NOT EXISTS` candidate gate dedupes
+      // across cron ticks (once a REFUND_INITIATED row exists, the orphan
+      // SELECT no longer returns this session). It does NOT dedupe two
+      // replicas in the *same* tick: both gates pass while neither audit
+      // row is written yet, both proceed to refund, and both then try to
+      // write. The partial unique index `ux_refund_initiated_one_per_session`
+      // plus ON CONFLICT DO NOTHING make the loser's INSERT a no-op, so the
+      // ledger gets exactly one REFUND_INITIATED row per session — matching
+      // the single refund payment-api actually issued (refunds there are
+      // idempotent on session_id).
+      await this.audit.record(
+        {
+          eventType: AUDIT_EVENT.REFUND_INITIATED,
+          outcome: AUDIT_OUTCOME.SUCCESS,
+          reservationId: row.id,
+          sessionId: row.session_id,
+          seatId: row.seat_id,
+          userId: row.user_id,
+          amount: session.amount,
+          rawPayload: {
+            reason: 'orphaned PAID session — seat never confirmed',
+            refundResponse: refund.body,
+          },
+        },
+        undefined,
+        { dedupeBySession: true },
+      );
+
+      reconciliationRefundsTotal.add(1, { outcome: 'initiated' });
       this.logger.log(
         `Refund initiated for reservation ${row.id} (session ${row.session_id})`,
       );
+      return;
+    }
+
+    // Failure branch — write a *non-terminal* REFUND_ATTEMPT_FAILED row so
+    // the orphan SELECT still returns this session on the next tick and we
+    // retry. The previous implementation wrote REFUND_INITIATED with
+    // outcome=FAILED here, which the orphan gate treated as terminal and
+    // suppressed every future retry — a transient 502 or network blip
+    // meant the user was charged but never refunded.
+    const priorFailures = await this.audit.countByEvent(
+      row.session_id,
+      AUDIT_EVENT.REFUND_ATTEMPT_FAILED,
+    );
+    const attemptNumber = priorFailures + 1;
+    const gaveUp = attemptNumber >= REFUND_MAX_ATTEMPTS;
+
+    await this.audit.record({
+      eventType: gaveUp ? AUDIT_EVENT.REFUND_GAVE_UP : AUDIT_EVENT.REFUND_ATTEMPT_FAILED,
+      outcome: AUDIT_OUTCOME.FAILED,
+      reservationId: row.id,
+      sessionId: row.session_id,
+      seatId: row.seat_id,
+      userId: row.user_id,
+      amount: session.amount,
+      rawPayload: {
+        reason: 'orphaned PAID session — refund attempt failed',
+        attemptNumber,
+        maxAttempts: REFUND_MAX_ATTEMPTS,
+        refundResponse: refund.body,
+      },
+    });
+
+    reconciliationRefundsTotal.add(1, {
+      outcome: gaveUp ? 'gave_up' : 'failed',
+    });
+
+    if (gaveUp) {
+      this.logger.error(
+        `Refund GAVE UP for reservation ${row.id} (session ${row.session_id}) ` +
+          `after ${attemptNumber} attempts — operator action required: ${JSON.stringify(refund.body)}`,
+      );
     } else {
       this.logger.warn(
-        `Refund REJECTED for reservation ${row.id}: ${JSON.stringify(refund.body)}`,
+        `Refund attempt ${attemptNumber}/${REFUND_MAX_ATTEMPTS} failed for ` +
+          `reservation ${row.id} (session ${row.session_id}); will retry next tick: ` +
+          `${JSON.stringify(refund.body)}`,
       );
     }
   }

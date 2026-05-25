@@ -9,6 +9,7 @@ import {
   AUDIT_OUTCOME,
   API_KEY_HEADER,
   RECONCILIATION_PENDING_MAX_AGE_HOURS,
+  REFUND_MAX_ATTEMPTS,
 } from '../common/constants';
 
 /**
@@ -59,7 +60,12 @@ const textResp = (
 describe('ReconciliationWorker', () => {
   let worker: ReconciliationWorker;
   let repo: { findOrphanedReservations: jest.Mock };
-  let audit: { record: jest.Mock; hasPriorOutcome: jest.Mock; findByReservation: jest.Mock };
+  let audit: {
+    record: jest.Mock;
+    hasPriorOutcome: jest.Mock;
+    countByEvent: jest.Mock;
+    findByReservation: jest.Mock;
+  };
 
   beforeEach(async () => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -70,6 +76,7 @@ describe('ReconciliationWorker', () => {
     audit = {
       record: jest.fn().mockResolvedValue(undefined),
       hasPriorOutcome: jest.fn().mockResolvedValue(false),
+      countByEvent: jest.fn().mockResolvedValue(0),
       findByReservation: jest.fn(),
     };
 
@@ -174,8 +181,9 @@ describe('ReconciliationWorker', () => {
     expect(options).toEqual({ dedupeBySession: true });
   });
 
-  it('records REFUND_INITIATED with outcome FAILED when payment-api rejects the refund', async () => {
+  it('records REFUND_ATTEMPT_FAILED (non-terminal) when payment-api rejects the refund, so the next tick retries', async () => {
     stubOrphans([ORPHAN_ROW]);
+    audit.countByEvent.mockResolvedValueOnce(0); // no prior failures
     jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/sessions/')) {
@@ -196,9 +204,50 @@ describe('ReconciliationWorker', () => {
     await worker.reconcileOrphanedPayments();
 
     expect(audit.record).toHaveBeenCalledTimes(1);
-    const [entry] = audit.record.mock.calls[0];
-    expect(entry.eventType).toBe(AUDIT_EVENT.REFUND_INITIATED);
+    const [entry, db, options] = audit.record.mock.calls[0];
+    // The transient marker — NOT REFUND_INITIATED. Critical: the orphan
+    // SELECT excludes REFUND_INITIATED but not REFUND_ATTEMPT_FAILED, so
+    // writing this value here is what lets the next tick retry. Writing
+    // REFUND_INITIATED here was the bug.
+    expect(entry.eventType).toBe(AUDIT_EVENT.REFUND_ATTEMPT_FAILED);
     expect(entry.outcome).toBe(AUDIT_OUTCOME.FAILED);
+    expect(entry.rawPayload).toMatchObject({
+      attemptNumber: 1,
+      maxAttempts: REFUND_MAX_ATTEMPTS,
+    });
+    // No dedupe — the retry marker is intentionally non-unique per session.
+    expect(db).toBeUndefined();
+    expect(options).toBeUndefined();
+  });
+
+  it('writes terminal REFUND_GAVE_UP after REFUND_MAX_ATTEMPTS failures so the orphan stops looping', async () => {
+    stubOrphans([ORPHAN_ROW]);
+    // Prior attempts already at the cap minus one — this attempt pushes us over.
+    audit.countByEvent.mockResolvedValueOnce(REFUND_MAX_ATTEMPTS - 1);
+    jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/sessions/')) {
+        return jsonResp({
+          sessionId: 'cs_orphan',
+          status: 'PAID',
+          seatId: 'A1',
+          userId: 'user_1',
+          amount: 10,
+        });
+      }
+      return jsonResp({ message: 'still broken' }, { ok: false, status: 500 });
+    });
+
+    await worker.reconcileOrphanedPayments();
+
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    const [entry] = audit.record.mock.calls[0];
+    expect(entry.eventType).toBe(AUDIT_EVENT.REFUND_GAVE_UP);
+    expect(entry.outcome).toBe(AUDIT_OUTCOME.FAILED);
+    expect(entry.rawPayload).toMatchObject({
+      attemptNumber: REFUND_MAX_ATTEMPTS,
+      maxAttempts: REFUND_MAX_ATTEMPTS,
+    });
   });
 
   it('leaves a young PENDING session alone (no refund, no audit) — the webhook may still arrive', async () => {

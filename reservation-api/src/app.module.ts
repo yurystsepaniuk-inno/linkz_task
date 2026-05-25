@@ -9,6 +9,7 @@ import { SeatsModule } from './seats/seats.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { CronModule } from './cron/cron.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { CronModule } from './cron/cron.module';
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    HealthModule,
     AuditModule,
     SeatsModule,
     ReservationsModule,

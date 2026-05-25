@@ -31,9 +31,16 @@ export class ReconciliationRepository {
    *   • the grace window has passed (no late webhook can save it now),
    *   • we have never recorded PAYMENT_SUCCEEDED for that session,
    *   • we have not already issued a REFUND_INITIATED for it,
+   *   • we have not already given up after REFUND_MAX_ATTEMPTS failures
+   *     (REFUND_GAVE_UP is the terminal-failure marker — operator owns it),
    *   • the reconciliation cron has not already DISMISSED it (payment-api
    *     status was FAILED / stuck-PENDING on a previous tick — see
    *     `RECONCILIATION_DISMISSED` for why this terminator exists).
+   *
+   * Note: REFUND_ATTEMPT_FAILED is *not* in the exclusion list. It is a
+   * transient marker recorded per failed attempt so the worker can count
+   * them; the orphan must keep re-entering the candidate set until the
+   * refund actually succeeds or we hit the attempt cap.
    */
   async findOrphanedReservations(db: Queryable = this.pool): Promise<OrphanedReservation[]> {
     const { rows } = await db.query<OrphanedReservation>(
@@ -53,6 +60,7 @@ export class ReconciliationRepository {
         [
           AUDIT_EVENT.PAYMENT_SUCCEEDED,
           AUDIT_EVENT.REFUND_INITIATED,
+          AUDIT_EVENT.REFUND_GAVE_UP,
           AUDIT_EVENT.RECONCILIATION_DISMISSED,
         ],
       ],

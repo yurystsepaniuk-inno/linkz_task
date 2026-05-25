@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
@@ -9,7 +9,6 @@ import {
   SESSION_TTL_MS,
   SessionStatus,
 } from '../common/constants';
-import { MESSAGES } from '../common/messages';
 
 export interface CheckoutSession {
   seatId: string;
@@ -72,20 +71,6 @@ export class SessionsRepository {
       [sessionId],
     );
     return rows[0] ? rowToSession(rows[0]) : undefined;
-  }
-
-  async update(
-    sessionId: string,
-    status: SessionStatus,
-    db: Queryable = this.pool,
-  ): Promise<void> {
-    const { rowCount } = await db.query(
-      `UPDATE checkout_sessions
-          SET status = $2, updated_at = NOW()
-        WHERE id = $1`,
-      [sessionId, status],
-    );
-    if (!rowCount) throw new NotFoundException(MESSAGES.sessions.notFound);
   }
 
   /**
