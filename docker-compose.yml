@@ -16,6 +16,11 @@ services:
       - "5432:5432"
     volumes:
       - reservations_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d reservations"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   payments-db:
     image: postgres:16
@@ -27,6 +32,76 @@ services:
       - "5433:5432"
     volumes:
       - payments_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d payments"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------------
+  # Application services. All four Node services run as containers so the
+  # reviewer can bring the whole platform up with a single `docker compose up`.
+  #
+  # The host-facing URLs in each .env (http://localhost:300X) stay correct
+  # because the browser still reaches the services on localhost via published
+  # ports. The container-internal overrides below swap localhost for the
+  # docker network names where services talk to each other:
+  #   reservation-api <-> payment-api  (RESERVATION_API_URL / PAYMENT_API_URL)
+  #   APIs           <-> their Postgres (DB_HOST)
+  #   APIs           <-> otel-collector (OTEL_EXPORTER_OTLP_ENDPOINT)
+  # ------------------------------------------------------------------
+
+  reservation-api:
+    build: ./reservation-api
+    env_file:
+      - path: ./reservation-api/.env
+        required: false
+    environment:
+      DB_HOST: reservations-db
+      DB_PORT: "5432"
+      PAYMENT_API_URL: http://payment-api:3003
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "3000:3000"
+    depends_on:
+      reservations-db:
+        condition: service_healthy
+
+  payment-api:
+    build: ./payment-api
+    env_file:
+      - path: ./payment-api/.env
+        required: false
+    environment:
+      DB_HOST: payments-db
+      DB_PORT: "5432"
+      RESERVATION_API_URL: http://reservation-api:3000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "3003:3003"
+    depends_on:
+      payments-db:
+        condition: service_healthy
+
+  reservation-web:
+    build: ./reservation-web
+    env_file:
+      - path: ./reservation-web/.env
+        required: false
+    ports:
+      - "3001:3001"
+    depends_on:
+      - reservation-api
+
+  payment-web:
+    build: ./payment-web
+    env_file:
+      - path: ./payment-web/.env
+        required: false
+    ports:
+      - "3002:3002"
+    depends_on:
+      - payment-api
 
   # ------------------------------------------------------------------
   # Observability profile. Opt-in: `docker compose --profile observability up`.
@@ -38,7 +113,8 @@ services:
   # from there to the request's log lines.
   #
   # Heavy for a 3-seat demo — the trade-off is explicit in plan.md/Task 5.
-  # The default (no profile) brings up just the two databases.
+  # The default (no profile) brings up the two databases and the four app
+  # services.
   # ------------------------------------------------------------------
 
   otel-collector:
