@@ -66,6 +66,15 @@ services:
     depends_on:
       reservations-db:
         condition: service_healthy
+    # /health is the shallow readiness probe (process + DB round-trip).
+    # `start_period` covers `npm run migrate` on first boot so a slow first
+    # start doesn't flap. BusyBox wget ships with the node:alpine image.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   payment-api:
     build: ./payment-api
@@ -82,6 +91,12 @@ services:
     depends_on:
       payments-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3003/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   reservation-web:
     build: ./reservation-web
@@ -91,7 +106,15 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      - reservation-api
+      reservation-api:
+        condition: service_healthy
+    # Vite dev server has no /health route; probe the index page instead.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3001/ || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   payment-web:
     build: ./payment-web
@@ -101,7 +124,14 @@ services:
     ports:
       - "3002:3002"
     depends_on:
-      - payment-api
+      payment-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3002/ || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   # ------------------------------------------------------------------
   # Observability profile. Opt-in: `docker compose --profile observability up`.

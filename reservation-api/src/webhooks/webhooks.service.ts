@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
@@ -47,6 +48,8 @@ type WebhookTxnResult =
 
 @Injectable()
 export class WebhooksService {
+  private readonly logger = new Logger(WebhooksService.name);
+
   constructor(
     private readonly repo: WebhooksRepository,
     private readonly audit: PaymentAuditRepository,
@@ -231,8 +234,15 @@ export class WebhooksService {
   }
 
   /** Post-COMMIT only — emits outcomes that actually persisted.
-   *  `duplicate` and `noop` get their own buckets so payment-api over-retries
-   *  and stale-webhook bursts don't look like real activity. */
+   *  Three distinct buckets so dashboards/alerts can tell them apart:
+   *    - `duplicate`   — payment-api retried a webhook we already settled
+   *    - `noop_stale`  — webhook matched no live row; payment-api side is
+   *                      already PAID, so the reconciliation cron will need
+   *                      to issue an automatic refund. Logged at WARN so an
+   *                      operator sees it during an incident without having
+   *                      to wait for the cron's audit row.
+   *    - `succeeded`/`failed` — happy path.
+   */
   private emitPostCommitMetric(
     payload: WebhookPayload,
     result: WebhookTxnResult,
@@ -242,11 +252,17 @@ export class WebhooksService {
       paymentOutcomesTotal.add(1, { outcome: 'duplicate' });
       return;
     }
-    const counterOutcome = result.matchedLiveReservation
-      ? payload.event === PAYMENT_EVENT.SUCCEEDED
-        ? 'succeeded'
-        : 'failed'
-      : 'noop';
+    if (!result.matchedLiveReservation) {
+      paymentOutcomesTotal.add(1, { outcome: 'noop_stale' });
+      span.setAttribute('webhook.outcome', 'noop_stale');
+      this.logger.warn(
+        `Stale webhook ${payload.event} for session=${payload.sessionId} matched no live reservation; ` +
+          `payment-api side is already settled. Reconciliation cron will issue a refund if appropriate.`,
+      );
+      return;
+    }
+    const counterOutcome =
+      payload.event === PAYMENT_EVENT.SUCCEEDED ? 'succeeded' : 'failed';
     paymentOutcomesTotal.add(1, { outcome: counterOutcome });
     span.setAttribute('webhook.outcome', counterOutcome);
   }

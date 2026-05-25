@@ -146,6 +146,7 @@ Full list per service in each `.env.example`. The committed examples are dev-rea
 - `CLERK_SECRET_KEY` / `CLERK_PUBLISHABLE_KEY` (reservation-api); `VITE_CLERK_PUBLISHABLE_KEY` (reservation-web)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4318`; use `http://otel-collector:4318` inside docker). `OTEL_DISABLED=1` skips SDK init.
 - `LOG_LEVEL` (pino, default `info`); `PINO_PRETTY=1` for human-readable dev logs.
+- `TRUST_PROXY` (payment-api, unset by default) — accepts Express' [`trust proxy`](https://expressjs.com/en/guide/behind-proxies.html) syntax (`1`, `loopback`, CIDR list, etc.). **Set this when payment-api runs behind any reverse proxy** (ALB, nginx, k8s ingress) so `PollRateLimitGuard` keys off the real client IP instead of bucketing every request under the proxy's address. Leave unset on bare deployments — with no proxy, a spoofed `X-Forwarded-For` would let any client pick their own bucket.
 
 ---
 
@@ -324,3 +325,7 @@ Prometheus exemplar → Tempo trace (`exemplarTraceIdDestinations`) → Loki log
 Stack config: [observability/collector/config.yaml](observability/collector/config.yaml), [observability/prometheus/prometheus.yml](observability/prometheus/prometheus.yml), [observability/tempo/tempo.yaml](observability/tempo/tempo.yaml), [observability/loki/loki-config.yaml](observability/loki/loki-config.yaml), [observability/grafana/provisioning/](observability/grafana/provisioning/), [observability/grafana/dashboards/slo-overview.json](observability/grafana/dashboards/slo-overview.json), [docs/SLA.md](docs/SLA.md). App-side: `*/src/observability/{tracing,logger,metrics,tracer}.ts` (tracing.ts is imported *first* in `main.ts` so auto-instrumentation patches `http`/`pg` before they're loaded).
 
 Six containers + ~1 GB RAM is overkill for a 3-seat demo — it's on the page to demonstrate the *production shape*, not because it's needed to run the service. Skipping the profile leaves the SDK as a no-op when there's no Collector to talk to.
+
+### Dashboard preview without running the stack
+
+A reviewer who would rather not spin up Grafana + Tempo + Loki + Prometheus + Collector still sees what the SLO dashboard contains: [observability/grafana/dashboards/PREVIEW.md](observability/grafana/dashboards/PREVIEW.md) lists every panel with the PromQL query behind it and a one-line note on what it shows (including the `duplicate` / `noop_stale` payment-outcome breakdown and the burn-rate panels). Captured PNGs live under [observability/grafana/dashboards/screenshots/](observability/grafana/dashboards/screenshots/) (recipe to regenerate them in the README there). The text preview is the source-of-truth pairing with [slo-overview.json](observability/grafana/dashboards/slo-overview.json); the PNGs are best-effort snapshots.

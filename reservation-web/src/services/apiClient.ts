@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAuth, useClerk } from '@clerk/react';
+import { useAuth, useClerk } from '@clerk/clerk-react';
 import axios, { AxiosInstance } from 'axios';
 
 const baseURL = import.meta.env.VITE_API_URL;

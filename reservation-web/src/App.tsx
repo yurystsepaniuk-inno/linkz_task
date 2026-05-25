@@ -1,17 +1,18 @@
-import { Show } from '@clerk/react';
+import { SignedIn, SignedOut } from '@clerk/clerk-react';
 import { LandingPage, SeatsPage } from './pages';
 
-// Auth gating is delegated entirely to Clerk: <Show> swaps the view on the
-// session state, so there is no ProtectedRoute and no client-side router.
+// Auth gating is delegated entirely to Clerk: <SignedIn>/<SignedOut> swap
+// the view on session state, so there is no ProtectedRoute and no client-side
+// router.
 export function App() {
   return (
     <>
-      <Show when="signed-out">
+      <SignedOut>
         <LandingPage />
-      </Show>
-      <Show when="signed-in">
+      </SignedOut>
+      <SignedIn>
         <SeatsPage />
-      </Show>
+      </SignedIn>
     </>
   );
 }

@@ -28,7 +28,12 @@ export const reservationsTotal = meter.createCounter('reservations_total', {
 
 export const paymentOutcomesTotal = meter.createCounter('payment_outcomes_total', {
   description:
-    'Payment results observed via webhook. Drives the payment-success SLI.',
+    'Payment results observed via webhook. Drives the payment-success SLI. ' +
+    'Outcome labels: `succeeded` / `failed` (happy path), `duplicate` ' +
+    '(payment-api retried a webhook we already settled), `noop_stale` ' +
+    '(webhook matched no live reservation — payment-api side is settled, ' +
+    'reconciliation cron will refund). Alert on noop_stale rate > 0 for any ' +
+    'sustained window.',
 });
 
 export const webhookSignatureRejectedTotal = meter.createCounter(

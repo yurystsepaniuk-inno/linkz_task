@@ -4,7 +4,7 @@ import { SeatsPage } from './SeatsPage';
 
 // Clerk's <UserButton> renders an authenticated avatar widget; stub it so the
 // test stays focused on seat-booking behaviour.
-vi.mock('@clerk/react', () => ({
+vi.mock('@clerk/clerk-react', () => ({
   UserButton: () => <div data-testid="user-button" />,
 }));
 

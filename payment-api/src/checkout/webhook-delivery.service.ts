@@ -29,6 +29,21 @@ export interface DeliveryHandle {
  * Outbox dispatcher. The first attempt fires synchronously inside `deliver()`
  * so `POST /pay` can return an honest `webhookDelivered` flag; subsequent
  * retries are driven by the `setInterval` poller that runs across restarts.
+ *
+ * **Production swap-point.** The 500 ms tight poll is fine for a single
+ * instance under demo load — it is one trivial `SELECT … FOR UPDATE SKIP
+ * LOCKED` per tick — but it wastes wakeups at idle and scales poorly across
+ * replicas. In production swap the `setInterval` driver for either of:
+ *   1. Postgres `LISTEN`/`NOTIFY` — fire a `NOTIFY webhook_due` from the
+ *      INSERT/`rescheduleAfter` paths so the poller wakes on insert with no
+ *      idle traffic, and keep a long (e.g. 30 s) fallback interval as a
+ *      backstop for missed notifications. Same single-process topology, just
+ *      event-driven.
+ *   2. A dedicated job queue (BullMQ on Redis, Temporal, etc.) — when the
+ *      outbox grows beyond a couple of replicas and you want distributed
+ *      scheduling + a real DLQ.
+ * Mirrored treatment to `PollRateLimitGuard`: in-process state today,
+ * documented swap-out target tomorrow.
  */
 @Injectable()
 export class WebhookDeliveryService implements OnApplicationBootstrap, OnApplicationShutdown {

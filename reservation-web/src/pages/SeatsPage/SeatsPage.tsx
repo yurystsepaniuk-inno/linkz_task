@@ -1,4 +1,4 @@
-import { UserButton } from '@clerk/react';
+import { UserButton } from '@clerk/clerk-react';
 import { MESSAGES } from '../../consts';
 import { SeatsActions, SeatsGrid, Toast } from '../../components';
 import { useSeats } from '../../hooks';

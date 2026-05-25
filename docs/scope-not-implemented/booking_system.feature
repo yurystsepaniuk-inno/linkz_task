@@ -133,3 +133,29 @@ Feature: Public Seat Reservation Platform
     Then the system must not drop the error or crash the thread
     And the system must push the failed refund event into a "Dead Letter Queue" or database human-intervention table
     And the system must alert operational teams via a critical log message
+
+  # =========================================================================
+  # PHASE 3: PRICING & SEAT TIERS  (out of scope for this iteration)
+  # =========================================================================
+  #
+  # Single-source-of-truth pricing today: payment-api resolves every checkout
+  # to the global `RESERVATION_AMOUNT` (default 10.00) and echoes it back so
+  # reservation-api can audit from the same number. There is no `seats.price`
+  # column and no concept of seat tiers — every seat costs the same.
+  #
+  # The obvious next refactor when this assumption breaks is:
+  #   1. Add `seats.price NUMERIC(10,2) NOT NULL` (with a default that
+  #      backfills to `RESERVATION_AMOUNT` for existing rows).
+  #   2. `POST /api/checkout/sessions` carries the per-seat price; payment-api
+  #      stops looking at `RESERVATION_AMOUNT` and trusts the caller (but
+  #      still echoes for audit).
+  #   3. The `seats` GET response includes `price` so the UI can show it.
+  # Until then, scenarios like "premium A1 costs more than economy A3" or
+  # "front-row weekend surcharge" are explicitly out of scope.
+
+  Scenario*: Charge a per-seat price drawn from the seats table instead of a global constant
+    Given seat "A1" has a price of "25.00" and seat "A3" has a price of "5.00"
+    When a user sends a POST request to "/api/reservations" for seat "A1"
+    Then the resulting checkout session's amount must be "25.00", not the global "RESERVATION_AMOUNT"
+    And the audit row for the session must record the same per-seat price
+    And a separate booking of seat "A3" must produce a checkout session for "5.00"
