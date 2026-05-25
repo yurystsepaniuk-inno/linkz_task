@@ -11,7 +11,9 @@ import {
 
 /**
  * Reservations + seat-state mutations (seat reads live in `SeatsRepository`).
- * Methods accept a `Queryable` so they work inside or outside a txn.
+ * Read-only methods default `db` to the pool; mutating methods require an
+ * explicit `Queryable` (almost always a transaction client) so a caller can
+ * never accidentally write outside the seat-locking txn.
  */
 @Injectable()
 export class ReservationsRepository {
@@ -32,7 +34,7 @@ export class ReservationsRepository {
   async setSeatStatus(
     seatId: string,
     status: SeatStatus,
-    db: Queryable = this.pool,
+    db: Queryable,
   ): Promise<void> {
     await db.query('UPDATE seats SET status = $1 WHERE id = $2', [status, seatId]);
   }
@@ -40,7 +42,7 @@ export class ReservationsRepository {
   async insertPendingReservation(
     seatId: string,
     userId: string,
-    db: Queryable = this.pool,
+    db: Queryable,
   ): Promise<string> {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO reservations (seat_id, user_id, status, locked_at)
@@ -54,7 +56,7 @@ export class ReservationsRepository {
   async attachSessionId(
     reservationId: string,
     sessionId: string,
-    db: Queryable = this.pool,
+    db: Queryable,
   ): Promise<void> {
     await db.query('UPDATE reservations SET session_id = $1 WHERE id = $2', [
       sessionId,
@@ -65,7 +67,7 @@ export class ReservationsRepository {
   async setReservationStatus(
     reservationId: string,
     status: ReservationStatus,
-    db: Queryable = this.pool,
+    db: Queryable,
   ): Promise<void> {
     await db.query('UPDATE reservations SET status = $1 WHERE id = $2', [
       status,
@@ -93,7 +95,7 @@ export class ReservationsRepository {
    */
   async releaseSeatAndFailReservation(
     reservationId: string,
-    db: Queryable = this.pool,
+    db: Queryable,
   ): Promise<void> {
     const { rows } = await db.query<{ seat_id: string }>(
       `UPDATE reservations SET status = $1

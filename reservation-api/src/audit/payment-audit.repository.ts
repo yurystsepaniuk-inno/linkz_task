@@ -45,6 +45,12 @@ export interface AuditRow {
  */
 @Injectable()
 export class PaymentAuditRepository {
+  // Hard cap on persisted payload size. A misbehaving or hostile caller could
+  // otherwise push arbitrarily large JSON into JSONB — bloat we can't undo on
+  // an append-only table. Past the cap we keep a head-of-payload sample so the
+  // row is still useful in forensics.
+  private static readonly RAW_PAYLOAD_MAX_BYTES = 16 * 1024;
+
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
   async record(
@@ -70,9 +76,20 @@ export class PaymentAuditRepository {
         entry.eventType,
         entry.outcome,
         entry.signatureValid ?? null,
-        entry.rawPayload === undefined ? null : JSON.stringify(entry.rawPayload),
+        PaymentAuditRepository.encodeRawPayload(entry.rawPayload),
       ],
     );
+  }
+
+  private static encodeRawPayload(rawPayload: unknown): string | null {
+    if (rawPayload === undefined) return null;
+    const json = JSON.stringify(rawPayload);
+    if (json.length <= PaymentAuditRepository.RAW_PAYLOAD_MAX_BYTES) return json;
+    return JSON.stringify({
+      truncated: true,
+      originalBytes: json.length,
+      sample: json.slice(0, PaymentAuditRepository.RAW_PAYLOAD_MAX_BYTES),
+    });
   }
 
   async hasPriorOutcome(

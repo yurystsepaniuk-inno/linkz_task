@@ -57,6 +57,10 @@ export class WebhooksService {
   /** True when `signature` is a valid HMAC of `rawBody`; never throws. */
   isSignatureValid(rawBody: Buffer | undefined, signature: string): boolean {
     if (!rawBody) return false;
+    // Buffer.from(<non-hex>, 'hex') silently returns an empty buffer — the
+    // length check below would still reject it, but an explicit hex shape
+    // gate makes the audit reason ("malformed signature") unambiguous.
+    if (!/^[0-9a-f]+$/i.test(signature)) return false;
     const secret = this.config.getOrThrow<string>('WEBHOOK_SECRET');
     const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
     const sigBuf = Buffer.from(signature, 'hex');
