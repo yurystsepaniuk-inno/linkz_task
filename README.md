@@ -63,9 +63,9 @@ docker compose --profile observability up -d
 
 ### 2. Clerk keys (authentication)
 
-Create a free [Clerk](https://clerk.com) application in **test mode** and copy its publishable + secret keys into the `.env` files (see [Environment Variables](#environment-variables) for the variable names).
+Create a [Clerk](https://clerk.com) application and copy its publishable + secret keys into the `.env` files (see [Environment Variables](#environment-variables) for the variable names).
 
-**Session length is 7 days, not 90.** Clerk's free plan caps the long-lived session cookie at 7 days; a 90-day cap requires Clerk Pro. The access/refresh split is identical — only the ceiling differs.
+**Use Clerk Pro / paid production keys for the 90-day session requirement.** In the Clerk Dashboard, configure **Sessions → Maximum lifetime** to **90 days**. The long-lived session is still a revocable Clerk-managed cookie; the backend access token remains a short-lived JWT refreshed by Clerk, so this does not introduce a 90-day bearer token. A development/test Clerk instance can be used to run the demo locally, but production compliance for this requirement assumes a paid Clerk project with the 90-day maximum lifetime configured.
 
 ### 3. Configure environment
 
@@ -447,7 +447,7 @@ The system now distinguishes a handful of payment-failure paths and shows each a
 ### Authentication delegated to Clerk (no local identity store)
 **Why:** a seat-reservation platform should not be storing passwords. Clerk owns sign-up/sign-in/sign-out, hashing, and session management. This service holds **no `users` table** — `reservations.user_id` is the Clerk user id as text. `ClerkAuthGuard` verifies the bearer token on every protected request via `@clerk/backend`'s `verifyToken`.
 
-**Long-lived session, short-lived token.** A 90-day access token is insecure (leaked = three months with no revocation). Clerk splits it: the **session** lives in an httpOnly cookie (7-day cap on Clerk's free plan; Pro lifts it to 90); the **access token** the backend verifies is a ~60s JWT, refreshed transparently from the session. A stolen access token is useless within a minute; sessions are server-revocable.
+**Long-lived session, short-lived token.** A 90-day access token is insecure (leaked = three months with no revocation). Clerk splits it: the **session** lives in a Clerk-managed, httpOnly, server-revocable cookie configured with a **90-day Maximum lifetime** on a paid/Pro Clerk project; the **access token** the backend verifies is a ~60s JWT, refreshed transparently from that session. A stolen access token is useless within a minute; the long-lived session remains revocable centrally in Clerk.
 
 **Session expiry path.** When the cookie expires, Clerk can no longer mint tokens; `<Show when="signed-out">` re-renders and the user lands on sign-in. As a backstop, reservation-web's axios interceptor calls `Clerk.signOut()` on any `401`, so the UI settles cleanly even if the API call races Clerk's state update.
 
