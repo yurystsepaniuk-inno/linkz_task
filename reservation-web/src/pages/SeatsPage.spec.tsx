@@ -1,20 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 import SeatsPage from './SeatsPage';
 
-vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ token: 'tok', logout: vi.fn(), login: vi.fn() }),
+// Clerk's <UserButton> renders an authenticated avatar widget; stub it so the
+// test stays focused on seat-booking behaviour.
+vi.mock('@clerk/react', () => ({
+  UserButton: () => <div data-testid="user-button" />,
 }));
 
 const mockGet = vi.fn();
 const mockPost = vi.fn();
+// Stable instance so SeatsPage's `useCallback([api])` doesn't recreate
+// fetchSeats every render and re-trigger the useEffect.
+const mockApiInstance = {
+  get: (...args: unknown[]) => mockGet(...args),
+  post: (...args: unknown[]) => mockPost(...args),
+};
 vi.mock('../api', () => ({
-  default: {
-    get: (...args: unknown[]) => mockGet(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
-  },
+  useApi: () => mockApiInstance,
 }));
 
 const SEATS = [
@@ -24,11 +27,7 @@ const SEATS = [
 ];
 
 function renderSeats() {
-  return render(
-    <MemoryRouter>
-      <SeatsPage />
-    </MemoryRouter>,
-  );
+  return render(<SeatsPage />);
 }
 
 describe('SeatsPage', () => {

@@ -1,0 +1,79 @@
+# OpenTelemetry Collector — single entry point for traces, metrics, and logs
+# coming from the two NestJS services over OTLP/HTTP. The Collector decouples
+# the apps from the backends: switching Tempo → Honeycomb or Loki → Datadog
+# later means a one-file change here, not a redeploy of every service.
+#
+# Receivers: OTLP on 4317 (gRPC) and 4318 (HTTP). The Node SDKs in both APIs
+# default to 4318 — see `payment-api/src/observability/tracing.ts`.
+#
+# Pipelines:
+#   traces  → batch → Tempo (OTLP/gRPC on tempo:4317)
+#   metrics → batch → Prometheus exporter (scraped by prometheus on :8889)
+#   logs    → batch → Loki (otlphttp on loki:3100)
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Small batch — local-dev latency over throughput. Prod would tune up.
+  batch:
+    timeout: 1s
+    send_batch_size: 512
+
+  # Stamps every signal with a stable `cluster` label so a Grafana query like
+  # `{cluster="local"}` works the moment a second environment appears.
+  resource:
+    attributes:
+      - key: cluster
+        value: local
+        action: upsert
+
+exporters:
+  # Tempo speaks native OTLP — no transform needed.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Prometheus pulls metrics off this exporter's :8889 scrape endpoint. The
+  # exporter converts OTLP metrics into Prometheus format on the fly.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # Surface OTel resource attributes as labels so the dashboard can filter
+    # by `service`. Without this, the service-name lives in a metric attr
+    # called `service_name` that Prom won't expose by default.
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Loki accepts OTLP logs via its built-in /otlp endpoint.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+  # Debug exporter — useful when something disappears and you need to see
+  # what's actually arriving at the Collector. Enable per-pipeline as needed.
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlphttp/loki]

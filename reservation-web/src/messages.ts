@@ -1,16 +1,12 @@
 export const MESSAGES = {
-  login: {
-    title: 'Seat Reservation — Login',
-    emailLabel: 'Email',
-    passwordLabel: 'Password',
-    submit: 'Login',
-    submitting: 'Logging in…',
-    invalidCredentials: 'Invalid email or password',
-    genericError: 'Login failed. Please try again.',
+  landing: {
+    title: 'Seat Reservation',
+    subtitle: 'Sign in to reserve one of three available seats.',
+    signIn: 'Sign In',
+    signUp: 'Sign Up',
   },
   seats: {
     title: 'Seat Reservation',
-    logout: 'Logout',
     book: 'Book',
     booking: 'Booking…',
     refresh: 'Refresh',

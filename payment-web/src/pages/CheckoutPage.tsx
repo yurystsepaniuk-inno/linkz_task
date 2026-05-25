@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { PaymentResult } from '../constants';
+import { PAYMENT_ERROR_CODE, PaymentResult } from '../constants';
 import { MESSAGES } from '../messages';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -9,6 +9,43 @@ if (!API_URL) throw new Error('VITE_API_URL is required');
 interface SessionData {
   seatId: string;
   amount: number;
+}
+
+interface PayResponse {
+  status: PaymentResult;
+  webhookDelivered: boolean;
+}
+
+/**
+ * Map a backend error to a specific user-facing message. Routes on the
+ * machine-readable `code` field that payment-api ships in the error body
+ * (PAYMENT_ERROR_CODE.*) so changing the human-readable message text on the
+ * server can never break this branching. Falls back to HTTP status only when
+ * the body is unreadable or missing a code.
+ */
+async function classifyError(res: Response | null): Promise<string> {
+  if (!res) return MESSAGES.checkout.networkError;
+
+  let code: string | undefined;
+  try {
+    const body = (await res.clone().json()) as { code?: string };
+    code = body.code;
+  } catch {
+    // Non-JSON body or read error — fall through to status-based mapping.
+  }
+
+  switch (code) {
+    case PAYMENT_ERROR_CODE.SESSION_NOT_FOUND:
+      return MESSAGES.checkout.sessionExpired;
+    case PAYMENT_ERROR_CODE.SESSION_ALREADY_PROCESSED:
+      return MESSAGES.checkout.sessionAlreadyProcessed;
+    case PAYMENT_ERROR_CODE.INVALID_CARD_FORMAT:
+      return MESSAGES.checkout.invalidCardFormat;
+  }
+
+  if (res.status === 404) return MESSAGES.checkout.sessionExpired;
+  if (res.status === 400) return MESSAGES.checkout.invalidCardFormat;
+  return MESSAGES.checkout.paymentRequestFailed;
 }
 
 export default function CheckoutPage() {
@@ -32,23 +69,39 @@ export default function CheckoutPage() {
   async function handlePay(e: FormEvent) {
     e.preventDefault();
     setPaying(true);
+    setError('');
+    let res: Response | null = null;
     try {
-      const res = await fetch(`${API_URL}/api/checkout/sessions/${sessionId}/pay`, {
+      res = await fetch(`${API_URL}/api/checkout/sessions/${sessionId}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cardNumber }),
       });
-      if (!res.ok) throw new Error(MESSAGES.checkout.paymentRequestFailed);
-      const data = (await res.json()) as { status: PaymentResult };
-      navigate(`/result?status=${data.status}`);
+      if (!res.ok) {
+        setError(await classifyError(res));
+        return;
+      }
+      const data = (await res.json()) as PayResponse;
+      // Pass the webhook-delivery flag and the session id through to the
+      // result page so the UI can tell the user "your seat is still being
+      // confirmed" *and* poll the delivery-status endpoint to clear that
+      // banner the moment reservation-api receives the event.
+      const delivered = data.webhookDelivered ? '1' : '0';
+      const search = new URLSearchParams({
+        status: data.status,
+        delivered,
+        sessionId: sessionId ?? '',
+      });
+      navigate(`/result?${search.toString()}`);
     } catch {
-      setError(MESSAGES.checkout.paymentRequestFailed);
+      // network/CORS/abort — no Response at all
+      setError(await classifyError(null));
     } finally {
       setPaying(false);
     }
   }
 
-  if (error) {
+  if (error && !session) {
     return (
       <div className="page">
         <p data-testid="checkout-error" className="error-text">{error}</p>
@@ -80,6 +133,9 @@ export default function CheckoutPage() {
           </label>
         </div>
         <p className="hint-text">{MESSAGES.checkout.cardHint}</p>
+        {error && (
+          <p data-testid="checkout-error" className="error-text">{error}</p>
+        )}
         <button type="submit" disabled={paying} data-testid="pay-button" className="button">
           {paying ? MESSAGES.checkout.paying : MESSAGES.checkout.pay}
         </button>

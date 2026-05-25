@@ -1,0 +1,63 @@
+# Grafana data sources, auto-provisioned at container start. The interesting
+# part is the cross-source linking that powers the metric → trace → log
+# drill-down the SLO dashboard relies on:
+#
+#   • Prometheus exemplars: when a metric panel renders a histogram, Grafana
+#     reads the `trace_id` exemplar and renders a "View trace in Tempo"
+#     button next to each sampled point. Currently the OTLP exporter emits
+#     exemplars by default, so no app-side change is needed.
+#   • Tempo `tracesToLogsV2` field: from a Tempo trace, Grafana derives a
+#     Loki query against the same `trace_id` and exposes a "View logs" link.
+#   • Loki `derivedFields`: from a Loki line carrying `trace_id`, Grafana
+#     renders a "View trace in Tempo" link.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    uid: prometheus
+    jsonData:
+      timeInterval: 15s
+      # Wire exemplars to Tempo — when the histogram has trace_id exemplars,
+      # clicking one jumps to Tempo with the exact trace.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -1m
+        spanEndTimeShift: 1m
+        filterByTraceID: true
+        tags:
+          - key: service.name
+            value: service
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: -2m
+        spanEndTimeShift: 2m
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: prometheus
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    uid: loki
+    jsonData:
+      derivedFields:
+        - matcherRegex: '"trace_id":"(\w+)"'
+          name: TraceID
+          url: '$${__value.raw}'
+          datasourceUid: tempo

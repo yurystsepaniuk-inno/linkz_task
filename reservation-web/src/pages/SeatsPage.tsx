@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
-import api from '../api';
+import { UserButton } from '@clerk/react';
+import { useApi } from '../api';
 import Toast from '../components/Toast';
 import { isAxiosError } from 'axios';
 import { SEAT_STATUS, SeatStatus } from '../constants';
@@ -20,7 +20,7 @@ function seatClassName(seat: Seat, selectedId: string | null): string {
 }
 
 export default function SeatsPage() {
-  const { logout } = useAuth();
+  const api = useApi();
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export default function SeatsPage() {
       if (isAxiosError(err) && err.response?.status === 401) return;
       setToast(MESSAGES.seats.loadFailed);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => { fetchSeats(); }, [fetchSeats]);
 
@@ -69,7 +69,7 @@ export default function SeatsPage() {
     <div className="page page--medium">
       <div className="page-header">
         <h1>{MESSAGES.seats.title}</h1>
-        <button className="button" onClick={logout}>{MESSAGES.seats.logout}</button>
+        <UserButton />
       </div>
 
       <div className="seats">

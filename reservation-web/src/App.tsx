@@ -1,26 +1,18 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage from './pages/LoginPage';
+import { Show } from '@clerk/react';
 import SeatsPage from './pages/SeatsPage';
-import { useAuth } from './context/AuthContext';
+import LandingPage from './pages/LandingPage';
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
-  return token ? <>{children}</> : <Navigate to="/login" replace />;
-}
-
+// Auth gating is delegated entirely to Clerk: <Show> swaps the view on the
+// session state, so there is no ProtectedRoute and no client-side router.
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/seats"
-        element={
-          <ProtectedRoute>
-            <SeatsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/seats" replace />} />
-    </Routes>
+    <>
+      <Show when="signed-out">
+        <LandingPage />
+      </Show>
+      <Show when="signed-in">
+        <SeatsPage />
+      </Show>
+    </>
   );
 }

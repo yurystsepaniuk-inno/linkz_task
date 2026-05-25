@@ -1,29 +1,27 @@
 import { Test } from '@nestjs/testing';
 import { SeatsService } from './seats.service';
-import { PG_POOL } from '../database/database.module';
+import { SeatsRepository } from './seats.repository';
 
 describe('SeatsService', () => {
   let service: SeatsService;
-  let mockPool: { query: jest.Mock };
+  let repo: { findAll: jest.Mock };
 
   beforeEach(async () => {
-    mockPool = { query: jest.fn() };
+    repo = { findAll: jest.fn() };
 
     const module = await Test.createTestingModule({
-      providers: [SeatsService, { provide: PG_POOL, useValue: mockPool }],
+      providers: [SeatsService, { provide: SeatsRepository, useValue: repo }],
     }).compile();
 
     service = module.get(SeatsService);
   });
 
   it('returns 3 seats with id and status', async () => {
-    mockPool.query.mockResolvedValueOnce({
-      rows: [
-        { id: 'A1', status: 'AVAILABLE' },
-        { id: 'A2', status: 'PENDING_PAYMENT' },
-        { id: 'A3', status: 'CONFIRMED' },
-      ],
-    });
+    repo.findAll.mockResolvedValueOnce([
+      { id: 'A1', status: 'AVAILABLE' },
+      { id: 'A2', status: 'PENDING_PAYMENT' },
+      { id: 'A3', status: 'CONFIRMED' },
+    ]);
 
     const seats = await service.findAll();
     expect(seats).toHaveLength(3);

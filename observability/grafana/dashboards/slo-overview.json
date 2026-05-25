@@ -1,0 +1,346 @@
+{
+  "uid": "linkz-slo",
+  "title": "Linkz — SLO Overview",
+  "tags": ["slo", "linkz"],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "annotations": { "list": [] },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "SLI — Reservation Availability",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Reservation success rate (rolling 30m) — target 95%",
+      "description": "Confirmed + conflict are valid business outcomes. failed is the only error.",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(reservations_total{outcome=~\"confirmed|conflict\"}[30m])) / sum(rate(reservations_total[30m]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Reservation outcomes over time",
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(reservations_total[1m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "SLI — Reservation Latency (p95)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "POST /api/reservations p95 — target < 500 ms",
+      "description": "Click an exemplar dot to jump straight to the Tempo trace for that request.",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "custom": { "showPoints": "always", "pointSize": 5 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(reservation_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(reservation_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "SLI — Payment Success",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Payment success rate (30m)",
+      "description": "succeeded / (succeeded + failed). Excludes 'duplicate' and 'noop' which aren't fresh outcomes.",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(payment_outcomes_total{outcome=\"succeeded\"}[30m])) / sum(rate(payment_outcomes_total{outcome=~\"succeeded|failed\"}[30m]))"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Payment outcomes (incl. duplicates)",
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(payment_outcomes_total[1m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "SLI — Webhook Delivery",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Webhook delivery success (terminal status, 30m)",
+      "description": "delivered / (delivered + failed) over webhook_delivery_final_total. A failed delivery is a real outage — the reconciliation cron is the safety net.",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(webhook_delivery_final_total{outcome=\"delivered\"}[30m])) / sum(rate(webhook_delivery_final_total[30m]))"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Webhook attempts vs. terminal outcomes",
+      "description": "attempt = each HTTP call (incl. retries). final = the row settled on DELIVERED or FAILED. A growing gap means we're spending retries.",
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(webhook_delivery_attempts_total[1m]))",
+          "legendFormat": "attempt: {{outcome}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (outcome) (rate(webhook_delivery_final_total[1m]))",
+          "legendFormat": "final: {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Error budget (95% SLO over 30 days)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 }
+    },
+    {
+      "id": 13,
+      "type": "gauge",
+      "title": "Reservation availability — error-budget remaining (30d)",
+      "description": "0% = error budget consumed; freeze feature work, prioritize reliability. Computed as 1 - (failed_rate / (1 - SLO)), clamped at 0.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.25 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "clamp_min(1 - ((sum(rate(reservations_total{outcome=\"failed\"}[30d])) / sum(rate(reservations_total[30d]))) / 0.05), 0)"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Error-budget burn — 1h burn rate (alert when > 1)",
+      "description": "Burn rate > 1 means we'd consume the full 30-day budget in less than 30 days at the current failure rate. > 14.4 is a fast-burn alert (≤ 2h to consume the budget) and pages.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 14.4 }
+            ]
+          },
+          "custom": { "drawStyle": "line", "thresholdsStyle": { "mode": "line" } }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(reservations_total{outcome=\"failed\"}[1h])) / sum(rate(reservations_total[1h]))) / 0.05",
+          "legendFormat": "1h burn"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum(rate(reservations_total{outcome=\"failed\"}[6h])) / sum(rate(reservations_total[6h]))) / 0.05",
+          "legendFormat": "6h burn"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Operational counters (not SLIs)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Cron sweeps & reconciliation",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(seat_expiry_swept_total[5m]))",
+          "legendFormat": "reservation-api: stale seats released"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(checkout_sessions_expired_total[5m]))",
+          "legendFormat": "payment-api: stale sessions expired"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (outcome) (rate(reconciliation_refunds_total[5m]))",
+          "legendFormat": "reconciliation: {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Security: webhook signature rejections",
+      "description": "Non-zero = somebody is sending us forged payloads. Alert immediately.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.0001 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(webhook_signature_rejected_total[5m]))",
+          "legendFormat": "rejected/s"
+        }
+      ]
+    }
+  ]
+}

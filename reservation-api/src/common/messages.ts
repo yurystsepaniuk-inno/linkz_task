@@ -1,6 +1,8 @@
 export const MESSAGES = {
   auth: {
-    invalidCredentials: 'Invalid credentials',
+    missingToken: 'Missing bearer token',
+    invalidToken: 'Invalid or expired session token',
+    verifierUnavailable: 'Authentication service unavailable',
   },
   webhooks: {
     invalidSignature: 'Invalid signature',
@@ -9,5 +11,6 @@ export const MESSAGES = {
   reservations: {
     paymentApiError: 'Payment API error',
     paymentServiceUnavailable: 'Payment service unavailable',
+    notFound: 'Reservation not found',
   },
 } as const;

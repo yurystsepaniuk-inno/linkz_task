@@ -1,47 +1,66 @@
 import { Test } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { WebhooksService } from './webhooks.service';
-import { PG_POOL } from '../database/database.module';
-import { PAYMENT_EVENT, SEAT_STATUS, RESERVATION_STATUS } from '../common/constants';
+import { WebhooksRepository } from './webhooks.repository';
+import { PaymentAuditRepository } from '../audit/payment-audit.repository';
+import { TransactionRunner } from '../database/transaction.runner';
+import {
+  PAYMENT_EVENT,
+  SEAT_STATUS,
+  RESERVATION_STATUS,
+  AUDIT_EVENT,
+  AUDIT_OUTCOME,
+} from '../common/constants';
 
 describe('WebhooksService', () => {
   let service: WebhooksService;
-  let mockClient: { query: jest.Mock; release: jest.Mock };
-  let mockPool: { connect: jest.Mock };
+  let repo: {
+    transitionReservation: jest.Mock;
+    setSeatStatusIfPending: jest.Mock;
+  };
+  let mockAudit: {
+    record: jest.Mock;
+    hasPriorOutcome: jest.Mock;
+    findByReservation: jest.Mock;
+  };
+  let tx: { run: jest.Mock };
+  const fakeClient = {} as never;
   const secret = 'test-secret';
 
   const sign = (body: object) =>
     createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex');
 
-  // Default: reservations UPDATE matches no row. Tests that expect a live
-  // reservation override this with `matchReservation`.
-  const matchReservation = (seatId: string) => {
-    mockClient.query.mockImplementation((sql: string) => {
-      if (typeof sql === 'string' && sql.includes('UPDATE reservations')) {
-        return Promise.resolve({ rows: [{ seat_id: seatId }] });
-      }
-      return Promise.resolve({ rows: [] });
-    });
+  const matchReservation = (id: string, seatId: string) => {
+    repo.transitionReservation.mockResolvedValue({ id, seat_id: seatId });
   };
 
-  const seatUpdateCalls = () =>
-    mockClient.query.mock.calls.filter(
-      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE seats'),
-    );
+  const auditEntries = (eventType: string) =>
+    mockAudit.record.mock.calls
+      .map(([entry]) => entry)
+      .filter((entry) => entry.eventType === eventType);
 
   beforeEach(async () => {
-    mockClient = {
-      query: jest.fn().mockResolvedValue({ rows: [] }),
-      release: jest.fn(),
+    repo = {
+      transitionReservation: jest.fn().mockResolvedValue(undefined),
+      setSeatStatusIfPending: jest.fn().mockResolvedValue(undefined),
     };
-    mockPool = { connect: jest.fn().mockResolvedValue(mockClient) };
+    mockAudit = {
+      record: jest.fn().mockResolvedValue(undefined),
+      hasPriorOutcome: jest.fn().mockResolvedValue(false),
+      findByReservation: jest.fn(),
+    };
+    tx = {
+      run: jest.fn(async (fn: (client: unknown) => Promise<unknown>) => fn(fakeClient)),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
         WebhooksService,
-        { provide: PG_POOL, useValue: mockPool },
+        { provide: WebhooksRepository, useValue: repo },
+        { provide: PaymentAuditRepository, useValue: mockAudit },
+        { provide: TransactionRunner, useValue: tx },
         { provide: ConfigService, useValue: { getOrThrow: jest.fn().mockReturnValue(secret) } },
       ],
     }).compile();
@@ -49,66 +68,134 @@ describe('WebhooksService', () => {
     service = module.get(WebhooksService);
   });
 
-  it('throws 401 on invalid signature', () => {
-    const body = Buffer.from(JSON.stringify({ event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' }));
-    expect(() => service.verifySignature(body, 'badsig')).toThrow(UnauthorizedException);
-  });
+  const body = (p: object) => Buffer.from(JSON.stringify(p));
 
-  it('accepts valid signature and confirms seat on payment.succeeded', async () => {
-    matchReservation('A1');
+  it('rejects an invalid signature with 401 and audits SIGNATURE_REJECTED', async () => {
     const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
-    const body = Buffer.from(JSON.stringify(payload));
-    const sig = sign(payload);
-
-    service.verifySignature(body, sig);
-    const result = await service.handle(payload);
-    expect(result).toEqual({ received: true });
-    expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE reservations'),
-      [RESERVATION_STATUS.CONFIRMED, 'cs_abc', RESERVATION_STATUS.PENDING_PAYMENT],
+    await expect(service.handle(payload, body(payload), 'badsig')).rejects.toThrow(
+      UnauthorizedException,
     );
-    expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE seats'),
-      [SEAT_STATUS.CONFIRMED, 'A1', SEAT_STATUS.PENDING_PAYMENT],
-    );
+    const rejected = auditEntries(AUDIT_EVENT.SIGNATURE_REJECTED);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ outcome: AUDIT_OUTCOME.REJECTED, signatureValid: false });
+    expect(tx.run).not.toHaveBeenCalled();
   });
 
-  it('releases seat on payment.failed', async () => {
-    matchReservation('A2');
-    const payload = { event: PAYMENT_EVENT.FAILED, sessionId: 'cs_def', seatId: 'A2', userId: 'user-2' };
-    const body = Buffer.from(JSON.stringify(payload));
-    const sig = sign(payload);
+  it('rejects a missing raw body with 401 and audits SIGNATURE_REJECTED', async () => {
+    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
+    await expect(service.handle(payload, undefined, '')).rejects.toThrow(UnauthorizedException);
+    expect(auditEntries(AUDIT_EVENT.SIGNATURE_REJECTED)).toHaveLength(1);
+  });
 
-    service.verifySignature(body, sig);
-    const result = await service.handle(payload);
+  it('rejects an unknown event with 400', async () => {
+    const payload = { event: 'payment.exploded', sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
+    await expect(
+      service.handle(payload as never, body(payload), sign(payload)),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('confirms the seat and audits WEBHOOK_RECEIVED + PAYMENT_SUCCEEDED on payment.succeeded', async () => {
+    matchReservation('res-1', 'A1');
+    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
+
+    const result = await service.handle(payload, body(payload), sign(payload));
     expect(result).toEqual({ received: true });
-    expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE reservations'),
-      [RESERVATION_STATUS.FAILED, 'cs_def', RESERVATION_STATUS.PENDING_PAYMENT],
+
+    expect(repo.transitionReservation).toHaveBeenCalledWith(
+      'cs_abc',
+      RESERVATION_STATUS.CONFIRMED,
+      fakeClient,
     );
-    expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE seats'),
-      [SEAT_STATUS.AVAILABLE, 'A2', SEAT_STATUS.PENDING_PAYMENT],
+    expect(repo.setSeatStatusIfPending).toHaveBeenCalledWith(
+      'A1',
+      SEAT_STATUS.CONFIRMED,
+      fakeClient,
+    );
+
+    expect(auditEntries(AUDIT_EVENT.WEBHOOK_RECEIVED)).toHaveLength(1);
+    const succeeded = auditEntries(AUDIT_EVENT.PAYMENT_SUCCEEDED);
+    expect(succeeded).toHaveLength(1);
+    expect(succeeded[0]).toMatchObject({ outcome: AUDIT_OUTCOME.SUCCESS, reservationId: 'res-1' });
+    for (const [, db] of mockAudit.record.mock.calls) {
+      // Signature-rejection writes use the pool default (undefined db); all the
+      // transactional ones go through the fake client.
+      if (db !== undefined) expect(db).toBe(fakeClient);
+    }
+  });
+
+  it('releases the seat and audits PAYMENT_FAILED on payment.failed', async () => {
+    matchReservation('res-2', 'A2');
+    const payload = { event: PAYMENT_EVENT.FAILED, sessionId: 'cs_def', seatId: 'A2', userId: 'user-2' };
+
+    const result = await service.handle(payload, body(payload), sign(payload));
+    expect(result).toEqual({ received: true });
+    expect(repo.setSeatStatusIfPending).toHaveBeenCalledWith(
+      'A2',
+      SEAT_STATUS.AVAILABLE,
+      fakeClient,
+    );
+    const failed = auditEntries(AUDIT_EVENT.PAYMENT_FAILED);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ outcome: AUDIT_OUTCOME.FAILED, reservationId: 'res-2' });
+  });
+
+  it('atomically releases the seat and audits PAYMENT_FAILED in one transaction', async () => {
+    matchReservation('res-3', 'A3');
+    const payload = { event: PAYMENT_EVENT.FAILED, sessionId: 'cs_ghi', seatId: 'A3', userId: 'user-3' };
+
+    await service.handle(payload, body(payload), sign(payload));
+
+    // Everything that touched the DB ran inside tx.run (which provides the fake client).
+    expect(tx.run).toHaveBeenCalledTimes(1);
+    expect(repo.transitionReservation).toHaveBeenCalledWith(
+      'cs_ghi',
+      RESERVATION_STATUS.FAILED,
+      fakeClient,
+    );
+    expect(repo.setSeatStatusIfPending).toHaveBeenCalledWith(
+      'A3',
+      SEAT_STATUS.AVAILABLE,
+      fakeClient,
     );
   });
 
   it('updates the seat from the matched reservation, not the webhook payload', async () => {
-    // Reservation row says seat A1; payload (potentially forged/stale) claims A3.
-    matchReservation('A1');
+    matchReservation('res-1', 'A1');
     const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A3', userId: 'user-1' };
-    await service.handle(payload);
-    expect(seatUpdateCalls()).toEqual([
-      [expect.stringContaining('UPDATE seats'), [SEAT_STATUS.CONFIRMED, 'A1', SEAT_STATUS.PENDING_PAYMENT]],
-    ]);
+    await service.handle(payload, body(payload), sign(payload));
+    expect(repo.setSeatStatusIfPending).toHaveBeenCalledWith(
+      'A1',
+      SEAT_STATUS.CONFIRMED,
+      fakeClient,
+    );
   });
 
-  it('does not touch any seat when no live reservation matches (stale/duplicate webhook)', async () => {
-    // Default mock: reservations UPDATE returns zero rows.
+  it('audits a stale webhook (no prior, no match) as NOOP and touches no seat', async () => {
+    repo.transitionReservation.mockResolvedValue(undefined);
     const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_stale', seatId: 'A1', userId: 'user-1' };
-    const result = await service.handle(payload);
+    const result = await service.handle(payload, body(payload), sign(payload));
     expect(result).toEqual({ received: true });
-    expect(seatUpdateCalls()).toHaveLength(0);
-    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
-    expect(mockClient.release).toHaveBeenCalled();
+    expect(repo.setSeatStatusIfPending).not.toHaveBeenCalled();
+
+    const noop = auditEntries(AUDIT_EVENT.PAYMENT_SUCCEEDED);
+    expect(noop).toHaveLength(1);
+    expect(noop[0]).toMatchObject({ outcome: AUDIT_OUTCOME.NOOP, reservationId: null });
+  });
+
+  it('short-circuits a duplicate webhook delivery as DUPLICATE_WEBHOOK / NOOP', async () => {
+    mockAudit.hasPriorOutcome.mockResolvedValue(true);
+    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_dup', seatId: 'A1', userId: 'user-1' };
+
+    const result = await service.handle(payload, body(payload), sign(payload));
+    expect(result).toEqual({ received: true });
+
+    expect(repo.transitionReservation).not.toHaveBeenCalled();
+    expect(repo.setSeatStatusIfPending).not.toHaveBeenCalled();
+
+    expect(auditEntries(AUDIT_EVENT.WEBHOOK_RECEIVED)).toHaveLength(1);
+    const dup = auditEntries(AUDIT_EVENT.DUPLICATE_WEBHOOK);
+    expect(dup).toHaveLength(1);
+    expect(dup[0]).toMatchObject({ outcome: AUDIT_OUTCOME.NOOP, sessionId: 'cs_dup' });
+    expect(auditEntries(AUDIT_EVENT.PAYMENT_SUCCEEDED)).toHaveLength(0);
   });
 });

@@ -1,5 +1,12 @@
 services:
-  postgres:
+  # Database-per-service. Each microservice gets its own Postgres container,
+  # its own port, its own volume, and its own credentials surface. This is the
+  # honest production topology: in a real deployment these would be two RDS
+  # instances (different snapshots, different maintenance windows, different
+  # tunings, independently scalable). Running them as two containers locally
+  # preserves that boundary — neither service can SELECT from the other's
+  # tables even if it tried, because the tables live on a different machine.
+  reservations-db:
     image: postgres:16
     environment:
       POSTGRES_USER: app
@@ -8,7 +15,100 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - reservations_data:/var/lib/postgresql/data
+
+  payments-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: payments
+    ports:
+      - "5433:5432"
+    volumes:
+      - payments_data:/var/lib/postgresql/data
+
+  # ------------------------------------------------------------------
+  # Observability profile. Opt-in: `docker compose --profile observability up`.
+  #
+  # This is the metric → trace → log drill-down stack: Collector receives
+  # OTLP from both NestJS APIs, fans the signals out to Prometheus (metrics),
+  # Tempo (traces), and Loki (logs). Grafana wires them together so a panel
+  # on the SLO dashboard can be clicked through to the originating trace and
+  # from there to the request's log lines.
+  #
+  # Heavy for a 3-seat demo — the trade-off is explicit in plan.md/Task 5.
+  # The default (no profile) brings up just the two databases.
+  # ------------------------------------------------------------------
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    profiles: ["observability"]
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./observability/collector/config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC — used by sdk-node if configured
+      - "4318:4318"   # OTLP HTTP — what our Node SDKs default to
+      - "8889:8889"   # Prometheus scrape target
+    depends_on:
+      - tempo
+      - loki
+
+  prometheus:
+    image: prom/prometheus:v3.0.0
+    profiles: ["observability"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--enable-feature=exemplar-storage"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    profiles: ["observability"]
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP — Grafana queries hit this
+
+  loki:
+    image: grafana/loki:3.2.1
+    profiles: ["observability"]
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3030:3000"   # Host :3030 → Grafana :3000. Avoids the app-service ports (3000-3003).
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
 
 volumes:
-  postgres_data:
+  reservations_data:
+  payments_data:
+  prometheus_data:
+  tempo_data:
+  loki_data:
+  grafana_data:

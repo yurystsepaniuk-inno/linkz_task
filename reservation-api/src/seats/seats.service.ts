@@ -1,19 +1,13 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { Pool } from 'pg';
-import { PG_POOL } from '../database/database.module';
-import { SeatStatus } from '../common/constants';
+import { Injectable } from '@nestjs/common';
+import { SeatsRepository, Seat } from './seats.repository';
 
-export interface Seat {
-  id: string;
-  status: SeatStatus;
-}
+export { Seat };
 
 @Injectable()
 export class SeatsService {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(private readonly seats: SeatsRepository) {}
 
   async findAll(): Promise<Seat[]> {
-    const result = await this.pool.query<Seat>('SELECT id, status FROM seats ORDER BY id');
-    return result.rows;
+    return this.seats.findAll();
   }
 }

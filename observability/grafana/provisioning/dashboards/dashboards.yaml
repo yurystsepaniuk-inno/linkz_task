@@ -1,0 +1,15 @@
+# Auto-provision dashboards from /etc/grafana/dashboards. New JSON files
+# dropped into observability/grafana/dashboards/ appear in the UI after the
+# container restarts.
+apiVersion: 1
+
+providers:
+  - name: linkz
+    orgId: 1
+    folder: 'Linkz'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

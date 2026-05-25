@@ -9,6 +9,9 @@ export const MESSAGES = {
     alreadyProcessed: 'Session has already been processed',
     expired: 'Session has expired',
   },
+  deliveries: {
+    notFound: 'No delivery record for this session yet',
+  },
   payment: {
     invalidCardFormat:
       'cardNumber must be 13-19 digits, optionally separated by spaces or dashes',
