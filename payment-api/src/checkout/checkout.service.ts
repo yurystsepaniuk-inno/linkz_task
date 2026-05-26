@@ -4,6 +4,8 @@ import { createHmac } from 'crypto';
 import { SessionsRepository, CheckoutSession } from './sessions.repository';
 import { WebhookDeliveryService } from './webhook-delivery.service';
 import { CreateSessionDto, PayDto } from './checkout.dto';
+import { TransactionRunner } from '../database/transaction.runner';
+import { Queryable } from '../database/queryable';
 import {
   PAYMENT_EVENT,
   SESSION_STATUS,
@@ -52,6 +54,7 @@ export class CheckoutService {
     private readonly sessions: SessionsRepository,
     private readonly config: ConfigService,
     private readonly delivery: WebhookDeliveryService,
+    private readonly tx: TransactionRunner,
   ) {}
 
   async createSession(dto: CreateSessionDto) {
@@ -119,22 +122,34 @@ export class CheckoutService {
       const lifecycle = this.validateCardOrThrow(dto.cardNumber, started);
       span.setAttribute('payment.result', lifecycle.result);
 
-      const claimed = await this.claimSessionOrThrow(sessionId, lifecycle.sessionStatus, started);
+      // Atomically: flip the session PENDING → PAID/FAILED *and* persist the
+      // outbox row in one DB transaction. This eliminates the crash window
+      // where the session would be settled but no webhook row existed.
+      const record = await this.tx.run(async (client) => {
+        const claimed = await this.claimSessionOrThrow(
+          sessionId,
+          lifecycle.sessionStatus,
+          started,
+          client,
+        );
+        const signed = this.signPaymentWebhook(sessionId, claimed, lifecycle.event);
+        return this.delivery.recordPending(
+          signed.url,
+          signed.body,
+          signed.signature,
+          sessionId,
+          client,
+        );
+      });
 
-      const signed = this.signPaymentWebhook(sessionId, claimed, lifecycle.event);
-      const handle = await this.delivery.deliver(
-        signed.url,
-        signed.body,
-        signed.signature,
-        sessionId,
-      );
+      const deliveredOnFirstAttempt = await this.delivery.attemptOnce(record);
       this.emitPaymentOutcome(started, lifecycle.result);
-      span.setAttribute('webhook.delivered_first_attempt', handle.deliveredOnFirstAttempt);
+      span.setAttribute('webhook.delivered_first_attempt', deliveredOnFirstAttempt);
 
       return {
         status: lifecycle.result,
-        webhookDelivered: handle.deliveredOnFirstAttempt,
-        deliveryId: handle.deliveryId,
+        webhookDelivered: deliveredOnFirstAttempt,
+        deliveryId: record.id,
       };
     });
   }
@@ -163,11 +178,12 @@ export class CheckoutService {
     sessionId: string,
     finalStatus: SessionStatus,
     started: bigint,
+    db?: Queryable,
   ): Promise<CheckoutSession> {
-    const claimed = await this.sessions.tryClaim(sessionId, finalStatus);
+    const claimed = await this.sessions.tryClaim(sessionId, finalStatus, db);
     if (claimed) return claimed;
 
-    const existing = await this.sessions.getInternal(sessionId);
+    const existing = await this.sessions.getInternal(sessionId, db);
     if (!existing) {
       this.emitPreOutcomeError(started, 'unknown_session');
       throw new NotFoundException({

@@ -4,6 +4,7 @@ import { WEBHOOK_DELIVERY, SIGNATURE_HEADER } from '../common/constants';
 import { fetchWithTimeout } from '../common/http';
 import { withSpan } from '../observability/tracer';
 import { webhookDeliveryAttemptsTotal, webhookDeliveryFinalTotal } from '../observability/metrics';
+import { Queryable } from '../database/queryable';
 
 export interface DeliveryHandle {
   deliveryId: string;
@@ -55,14 +56,42 @@ export class WebhookDeliveryService implements OnApplicationBootstrap, OnApplica
     this.pollTimer = null;
   }
 
+  /**
+   * Persist the outbox row only. Accepts an optional `Queryable` so the
+   * caller can enrol this INSERT in their own transaction (e.g. `pay()`
+   * wraps `sessions.tryClaim` + `recordPending` together so the session's
+   * PENDING → PAID flip and the outbox row commit atomically).
+   *
+   * The synchronous first HTTP attempt is *not* run here — call
+   * `attemptOnce(record)` after commit. HTTP must never hold a row lock.
+   */
+  async recordPending(
+    url: string,
+    body: string,
+    signature: string,
+    sessionId: string,
+    db?: Queryable,
+  ): Promise<DeliveryRecord> {
+    return this.repo.insertPending(sessionId, url, body, signature, db);
+  }
+
+  /**
+   * Run a single HTTP attempt against an existing outbox row. On success
+   * the row is marked DELIVERED; on failure it is either rescheduled with
+   * backoff or marked FAILED once `maxAttempts` is reached.
+   */
+  async attemptOnce(record: DeliveryRecord): Promise<boolean> {
+    return this.runAttempt(record);
+  }
+
   async deliver(
     url: string,
     body: string,
     signature: string,
     sessionId: string,
   ): Promise<DeliveryHandle> {
-    const record = await this.repo.insertPending(sessionId, url, body, signature);
-    const ok = await this.runAttempt(record);
+    const record = await this.recordPending(url, body, signature, sessionId);
+    const ok = await this.attemptOnce(record);
     return { deliveryId: record.id, deliveredOnFirstAttempt: ok };
   }
 

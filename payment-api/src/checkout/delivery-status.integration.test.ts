@@ -24,6 +24,7 @@ import { CheckoutService } from './checkout.service';
 import { SessionsRepository } from './sessions.repository';
 import { WebhookDeliveryRepository } from './webhook-delivery.repository';
 import { WebhookDeliveryService } from './webhook-delivery.service';
+import { TransactionRunner } from '../database/transaction.runner';
 import { DELIVERY_STATUS, SESSION_ID_PREFIX } from '../common/constants';
 
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
@@ -59,7 +60,8 @@ const deliveryRepo = new WebhookDeliveryRepository(pool);
 // read-side helper (`getStatusBySession`), so we instantiate without booting
 // and rely on the controller calling that helper directly.
 const deliveryService = new WebhookDeliveryService(deliveryRepo);
-const checkoutService = new CheckoutService(sessionsRepo, config, deliveryService);
+const txRunner = new TransactionRunner(pool);
+const checkoutService = new CheckoutService(sessionsRepo, config, deliveryService, txRunner);
 const controller = new CheckoutController(checkoutService, deliveryService);
 
 async function cleanup() {

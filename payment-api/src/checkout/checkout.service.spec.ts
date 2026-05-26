@@ -5,6 +5,7 @@ import { createHmac } from 'crypto';
 import { CheckoutService } from './checkout.service';
 import { SessionsRepository } from './sessions.repository';
 import { WebhookDeliveryService } from './webhook-delivery.service';
+import { TransactionRunner } from '../database/transaction.runner';
 import {
   PAYMENT_EVENT,
   PAYMENT_RESULT,
@@ -29,7 +30,13 @@ describe('CheckoutService', () => {
     tryClaim: jest.Mock;
     update: jest.Mock;
   };
-  let delivery: { deliver: jest.Mock; getStatus: jest.Mock };
+  let delivery: {
+    recordPending: jest.Mock;
+    attemptOnce: jest.Mock;
+    deliver: jest.Mock;
+    getStatus: jest.Mock;
+  };
+  let txRunner: { run: jest.Mock };
 
   const secret = 'test-secret';
   const ENV: Record<string, string> = {
@@ -41,7 +48,8 @@ describe('CheckoutService', () => {
     RESERVATION_AMOUNT: RESERVATION_AMOUNT.toFixed(2),
   };
 
-  const okHandle = (deliveryId = 'd-1') => ({ deliveryId, deliveredOnFirstAttempt: true });
+  // recordPending returns the DeliveryRecord shape; the tests only read `.id`.
+  const recordRow = (id = 'd-1') => ({ id });
 
   // Helper: build the row object tryClaim would return on a successful claim.
   const claimedRow = (
@@ -64,8 +72,16 @@ describe('CheckoutService', () => {
       update: jest.fn(),
     };
     delivery = {
-      deliver: jest.fn().mockResolvedValue(okHandle()),
+      recordPending: jest.fn().mockResolvedValue(recordRow()),
+      attemptOnce: jest.fn().mockResolvedValue(true),
+      deliver: jest.fn(),
       getStatus: jest.fn(),
+    };
+    // Fake TransactionRunner that just invokes the callback with a stub client
+    // — the real BEGIN/COMMIT is exercised in integration tests; here we only
+    // care that pay() composes claim + recordPending correctly.
+    txRunner = {
+      run: jest.fn(async (fn: (client: unknown) => unknown) => fn({})),
     };
 
     const module = await Test.createTestingModule({
@@ -73,6 +89,7 @@ describe('CheckoutService', () => {
         CheckoutService,
         { provide: SessionsRepository, useValue: store },
         { provide: WebhookDeliveryService, useValue: delivery },
+        { provide: TransactionRunner, useValue: txRunner },
         {
           provide: ConfigService,
           useValue: {
@@ -119,12 +136,21 @@ describe('CheckoutService', () => {
 
     const result = await service.pay('sess_1', { cardNumber: '4111-1111-1111-4000' });
 
-    expect(store.tryClaim).toHaveBeenCalledWith('sess_1', SESSION_STATUS.PAID);
+    // claim + recordPending must run on the same transaction client so the
+    // two writes commit atomically.
+    expect(txRunner.run).toHaveBeenCalledTimes(1);
+    const txClient = store.tryClaim.mock.calls[0][2];
+    expect(txClient).toBeDefined();
+    expect(delivery.recordPending.mock.calls[0][4]).toBe(txClient);
+    // attemptOnce runs *after* commit, so no client is threaded through.
+    expect(delivery.attemptOnce).toHaveBeenCalledTimes(1);
+
+    expect(store.tryClaim).toHaveBeenCalledWith('sess_1', SESSION_STATUS.PAID, txClient);
     expect(result.status).toBe(PAYMENT_RESULT.SUCCESS);
     expect(result.webhookDelivered).toBe(true);
     expect(result.deliveryId).toBe('d-1');
 
-    const [url, rawBody, signature, sessionId] = delivery.deliver.mock.calls[0];
+    const [url, rawBody, signature, sessionId] = delivery.recordPending.mock.calls[0];
     expect(url).toBe(`${ENV.RESERVATION_API_URL}/api/webhooks/payment`);
     expect(sessionId).toBe('sess_1');
 
@@ -144,20 +170,19 @@ describe('CheckoutService', () => {
     );
 
     const result = await service.pay('sess_2', { cardNumber: '5000000000005000' });
-    expect(store.tryClaim).toHaveBeenCalledWith('sess_2', SESSION_STATUS.FAILED);
+    const txClient = store.tryClaim.mock.calls[0][2];
+    expect(store.tryClaim).toHaveBeenCalledWith('sess_2', SESSION_STATUS.FAILED, txClient);
     expect(result.status).toBe(PAYMENT_RESULT.FAILED);
 
-    const parsed = JSON.parse(delivery.deliver.mock.calls[0][1] as string);
+    const parsed = JSON.parse(delivery.recordPending.mock.calls[0][1] as string);
     expect(parsed.event).toBe(PAYMENT_EVENT.FAILED);
     expect(parsed.userId).toBe('user-2');
   });
 
   it('propagates webhookDelivered=false when the delivery service is still retrying', async () => {
     store.tryClaim.mockResolvedValue(claimedRow({ status: SESSION_STATUS.PAID }));
-    delivery.deliver.mockResolvedValueOnce({
-      deliveryId: 'd-pending',
-      deliveredOnFirstAttempt: false,
-    });
+    delivery.recordPending.mockResolvedValueOnce(recordRow('d-pending'));
+    delivery.attemptOnce.mockResolvedValueOnce(false);
 
     const result = await service.pay('sess_x', { cardNumber: '4111111111114000' });
     expect(result.webhookDelivered).toBe(false);
@@ -168,7 +193,7 @@ describe('CheckoutService', () => {
     store.tryClaim.mockResolvedValue(claimedRow());
     await service.pay('sess_x', { cardNumber: '4111111111114000' });
 
-    const [, rawBody, signature] = delivery.deliver.mock.calls[0];
+    const [, rawBody, signature] = delivery.recordPending.mock.calls[0];
     const recomputed = createHmac('sha256', secret).update(rawBody).digest('hex');
     expect(signature).toBe(recomputed);
     expect(typeof SIGNATURE_HEADER).toBe('string');
@@ -181,7 +206,10 @@ describe('CheckoutService', () => {
     await expect(
       service.pay(`${SESSION_ID_PREFIX}unknown`, { cardNumber: '4111111111114000' }),
     ).rejects.toThrow(NotFoundException);
-    expect(delivery.deliver).not.toHaveBeenCalled();
+    // Transaction rolls back via TransactionRunner; neither the outbox INSERT
+    // nor the synchronous attempt should run.
+    expect(delivery.recordPending).not.toHaveBeenCalled();
+    expect(delivery.attemptOnce).not.toHaveBeenCalled();
   });
 
   it('throws 400 when tryClaim misses because the session is already settled', async () => {
@@ -192,7 +220,8 @@ describe('CheckoutService', () => {
     await expect(service.pay('sess_settled', { cardNumber: '4111111111114000' })).rejects.toThrow(
       BadRequestException,
     );
-    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(delivery.recordPending).not.toHaveBeenCalled();
+    expect(delivery.attemptOnce).not.toHaveBeenCalled();
   });
 
   it('throws 400 for invalid card before touching the store', async () => {
@@ -200,6 +229,8 @@ describe('CheckoutService', () => {
       BadRequestException,
     );
     expect(store.tryClaim).not.toHaveBeenCalled();
-    expect(delivery.deliver).not.toHaveBeenCalled();
+    expect(txRunner.run).not.toHaveBeenCalled();
+    expect(delivery.recordPending).not.toHaveBeenCalled();
+    expect(delivery.attemptOnce).not.toHaveBeenCalled();
   });
 });
