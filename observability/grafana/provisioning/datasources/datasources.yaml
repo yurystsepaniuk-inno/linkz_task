@@ -40,7 +40,7 @@ datasources:
         filterByTraceID: true
         tags:
           - key: service.name
-            value: service
+            value: service_name
       tracesToMetrics:
         datasourceUid: prometheus
         spanStartTimeShift: -2m
