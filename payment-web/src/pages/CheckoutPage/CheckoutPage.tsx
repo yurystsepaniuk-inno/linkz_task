@@ -3,19 +3,14 @@ import { CheckoutForm, CheckoutSummary } from '../../components';
 import { useCheckout } from '../../hooks';
 
 export function CheckoutPage() {
-  const {
-    session,
-    error,
-    cardNumber,
-    paying,
-    setCardNumber,
-    handlePay,
-  } = useCheckout();
+  const { session, error, cardNumber, paying, setCardNumber, handlePay } = useCheckout();
 
   if (error && !session) {
     return (
       <div className="page">
-        <p data-testid="checkout-error" className="error-text">{error}</p>
+        <p data-testid="checkout-error" className="error-text">
+          {error}
+        </p>
       </div>
     );
   }

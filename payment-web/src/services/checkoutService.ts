@@ -13,9 +13,7 @@ if (!API_URL) throw new Error('VITE_API_URL is required');
  * machine-readable error code that classifyError() routes on. `res` is `null`
  * for network/CORS errors where no Response exists at all.
  */
-export type PayResult =
-  | { ok: true; data: PayResponse }
-  | { ok: false; res: Response | null };
+export type PayResult = { ok: true; data: PayResponse } | { ok: false; res: Response | null };
 
 export const checkoutService = {
   async getSession(sessionId: string): Promise<SessionData> {

@@ -121,10 +121,7 @@ export class PaymentAuditRepository {
     return Number(rows[0]?.count ?? 0);
   }
 
-  async findByReservation(
-    reservationId: string,
-    db: Queryable = this.pool,
-  ): Promise<AuditRow[]> {
+  async findByReservation(reservationId: string, db: Queryable = this.pool): Promise<AuditRow[]> {
     const { rows } = await db.query<AuditRow>(
       `SELECT id, reservation_id, session_id, seat_id, user_id, amount,
               event_type, outcome, signature_valid, raw_payload, created_at

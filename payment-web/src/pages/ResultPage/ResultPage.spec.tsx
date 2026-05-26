@@ -25,7 +25,9 @@ describe('ResultPage', () => {
   it('shows success status with the pending-sync detail when delivered=0', () => {
     renderResult('status=success&delivered=0');
     expect(screen.getByTestId('result-status')).toHaveTextContent('Successful');
-    expect(screen.getByTestId('result-detail')).toHaveTextContent(MESSAGES.result.successPendingDetail);
+    expect(screen.getByTestId('result-detail')).toHaveTextContent(
+      MESSAGES.result.successPendingDetail,
+    );
     expect(screen.getByTestId('result-pending')).toBeInTheDocument();
   });
 
@@ -39,7 +41,9 @@ describe('ResultPage', () => {
   it('shows failed status with the pending-release detail when delivered=0', () => {
     renderResult('status=failed&delivered=0');
     expect(screen.getByTestId('result-status')).toHaveTextContent('Failed');
-    expect(screen.getByTestId('result-detail')).toHaveTextContent(MESSAGES.result.failedPendingDetail);
+    expect(screen.getByTestId('result-detail')).toHaveTextContent(
+      MESSAGES.result.failedPendingDetail,
+    );
     expect(screen.getByTestId('result-pending')).toBeInTheDocument();
   });
 

@@ -156,9 +156,7 @@ describe('ReconciliationWorker', () => {
     // GET status then POST refund — both with the x-api-key header.
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const statusCall = fetchSpy.mock.calls[0];
-    expect(String(statusCall[0])).toBe(
-      'http://payment-api/api/checkout/sessions/cs_orphan/status',
-    );
+    expect(String(statusCall[0])).toBe('http://payment-api/api/checkout/sessions/cs_orphan/status');
     expect((statusCall[1]!.headers as Record<string, string>)[API_KEY_HEADER]).toBe('test-key');
     const refundCall = fetchSpy.mock.calls[1];
     expect(refundCall[1]!.method).toBe('POST');
@@ -195,10 +193,7 @@ describe('ReconciliationWorker', () => {
           amount: 10,
         });
       }
-      return jsonResp(
-        { message: 'Cannot refund a FAILED session' },
-        { ok: false, status: 400 },
-      );
+      return jsonResp({ message: 'Cannot refund a FAILED session' }, { ok: false, status: 400 });
     });
 
     await worker.reconcileOrphanedPayments();
@@ -401,9 +396,11 @@ describe('ReconciliationWorker', () => {
 
   it('skips reconciliation (no refund, no audit) when the status lookup returns non-JSON we cannot trust', async () => {
     stubOrphans([ORPHAN_ROW]);
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce(
-      textResp('<html>Service Unavailable</html>', { ok: true, status: 200 }),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        textResp('<html>Service Unavailable</html>', { ok: true, status: 200 }),
+      );
 
     await worker.reconcileOrphanedPayments();
 
@@ -418,9 +415,9 @@ describe('ReconciliationWorker', () => {
     // so we don't accidentally branch on a `parseError`-trace object as if
     // it had a real `.status` field.
     stubOrphans([ORPHAN_ROW]);
-    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
-      jsonResp({ parseError: 'something', rawText: 'oops' }),
-    );
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(jsonResp({ parseError: 'something', rawText: 'oops' }));
 
     await worker.reconcileOrphanedPayments();
     expect(audit.record).not.toHaveBeenCalled();

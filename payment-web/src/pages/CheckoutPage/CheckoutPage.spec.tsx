@@ -21,10 +21,7 @@ function renderCheckout(sessionId = 'sess_123') {
 }
 
 // Convenience builder for the two-fetch sequence: GET session + POST pay.
-const respond = (
-  sessionResp: Partial<Response>,
-  payResp: Partial<Response>,
-) => {
+const respond = (sessionResp: Partial<Response>, payResp: Partial<Response>) => {
   vi.spyOn(globalThis, 'fetch')
     .mockResolvedValueOnce(sessionResp as Response)
     .mockResolvedValueOnce(payResp as Response);
@@ -61,7 +58,10 @@ describe('CheckoutPage', () => {
   it('navigates to /result?status=success&delivered=1 when webhook delivered', async () => {
     respond(
       { ok: true, json: async () => ({ seatId: 'A1', amount: 10 }) },
-      { ok: true, json: async () => ({ status: 'success', webhookDelivered: true, deliveryId: 'd-1' }) },
+      {
+        ok: true,
+        json: async () => ({ status: 'success', webhookDelivered: true, deliveryId: 'd-1' }),
+      },
     );
 
     renderCheckout();
@@ -72,14 +72,19 @@ describe('CheckoutPage', () => {
     fireEvent.click(screen.getByTestId('pay-button'));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/result?status=success&delivered=1&sessionId=sess_123');
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/result?status=success&delivered=1&sessionId=sess_123',
+      );
     });
   });
 
   it('navigates with delivered=0 when the webhook is still retrying', async () => {
     respond(
       { ok: true, json: async () => ({ seatId: 'A1', amount: 10 }) },
-      { ok: true, json: async () => ({ status: 'success', webhookDelivered: false, deliveryId: 'd-2' }) },
+      {
+        ok: true,
+        json: async () => ({ status: 'success', webhookDelivered: false, deliveryId: 'd-2' }),
+      },
     );
 
     renderCheckout();
@@ -90,7 +95,9 @@ describe('CheckoutPage', () => {
     fireEvent.click(screen.getByTestId('pay-button'));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/result?status=success&delivered=0&sessionId=sess_123');
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/result?status=success&delivered=0&sessionId=sess_123',
+      );
     });
   });
 
@@ -100,15 +107,20 @@ describe('CheckoutPage', () => {
       {
         ok: false,
         status: 404,
-        clone: () => ({ json: async () => ({ code: PAYMENT_ERROR_CODE.SESSION_NOT_FOUND }) }) as Response,
+        clone: () =>
+          ({ json: async () => ({ code: PAYMENT_ERROR_CODE.SESSION_NOT_FOUND }) }) as Response,
       },
     );
 
     renderCheckout();
-    fireEvent.change(await screen.findByTestId('card-input'), { target: { value: '4111111111114000' } });
+    fireEvent.change(await screen.findByTestId('card-input'), {
+      target: { value: '4111111111114000' },
+    });
     fireEvent.click(screen.getByTestId('pay-button'));
 
-    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(MESSAGES.checkout.sessionExpired);
+    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(
+      MESSAGES.checkout.sessionExpired,
+    );
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -118,15 +130,20 @@ describe('CheckoutPage', () => {
       {
         ok: false,
         status: 400,
-        clone: () => ({ json: async () => ({ code: PAYMENT_ERROR_CODE.INVALID_CARD_FORMAT }) }) as Response,
+        clone: () =>
+          ({ json: async () => ({ code: PAYMENT_ERROR_CODE.INVALID_CARD_FORMAT }) }) as Response,
       },
     );
 
     renderCheckout();
-    fireEvent.change(await screen.findByTestId('card-input'), { target: { value: '1234123412341234' } });
+    fireEvent.change(await screen.findByTestId('card-input'), {
+      target: { value: '1234123412341234' },
+    });
     fireEvent.click(screen.getByTestId('pay-button'));
 
-    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(MESSAGES.checkout.invalidCardFormat);
+    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(
+      MESSAGES.checkout.invalidCardFormat,
+    );
   });
 
   it('shows the already-processed message when the backend returns SESSION_ALREADY_PROCESSED', async () => {
@@ -135,33 +152,50 @@ describe('CheckoutPage', () => {
       {
         ok: false,
         status: 400,
-        clone: () => ({ json: async () => ({ code: PAYMENT_ERROR_CODE.SESSION_ALREADY_PROCESSED }) }) as Response,
+        clone: () =>
+          ({
+            json: async () => ({ code: PAYMENT_ERROR_CODE.SESSION_ALREADY_PROCESSED }),
+          }) as Response,
       },
     );
 
     renderCheckout();
-    fireEvent.change(await screen.findByTestId('card-input'), { target: { value: '4111111111114000' } });
+    fireEvent.change(await screen.findByTestId('card-input'), {
+      target: { value: '4111111111114000' },
+    });
     fireEvent.click(screen.getByTestId('pay-button'));
 
-    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(MESSAGES.checkout.sessionAlreadyProcessed);
+    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(
+      MESSAGES.checkout.sessionAlreadyProcessed,
+    );
   });
 
   it('shows the network message when the pay request throws', async () => {
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ seatId: 'A1', amount: 10 }) } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ seatId: 'A1', amount: 10 }),
+      } as Response)
       .mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
     renderCheckout();
-    fireEvent.change(await screen.findByTestId('card-input'), { target: { value: '4111111111114000' } });
+    fireEvent.change(await screen.findByTestId('card-input'), {
+      target: { value: '4111111111114000' },
+    });
     fireEvent.click(screen.getByTestId('pay-button'));
 
-    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(MESSAGES.checkout.networkError);
+    expect(await screen.findByTestId('checkout-error')).toHaveTextContent(
+      MESSAGES.checkout.networkError,
+    );
   });
 
   it('navigates to /result?status=failed&delivered=1 for card ending 5000', async () => {
     respond(
       { ok: true, json: async () => ({ seatId: 'A2', amount: 10 }) },
-      { ok: true, json: async () => ({ status: 'failed', webhookDelivered: true, deliveryId: 'd-3' }) },
+      {
+        ok: true,
+        json: async () => ({ status: 'failed', webhookDelivered: true, deliveryId: 'd-3' }),
+      },
     );
 
     renderCheckout();
@@ -172,7 +206,9 @@ describe('CheckoutPage', () => {
     fireEvent.click(screen.getByTestId('pay-button'));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/result?status=failed&delivered=1&sessionId=sess_123');
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/result?status=failed&delivered=1&sessionId=sess_123',
+      );
     });
   });
 });

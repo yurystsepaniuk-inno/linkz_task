@@ -2,11 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
 import { Queryable } from '../database/queryable';
-import {
-  AUDIT_EVENT,
-  RESERVATION_STATUS,
-  RECONCILIATION_GRACE_MINUTES,
-} from '../common/constants';
+import { AUDIT_EVENT, RESERVATION_STATUS, RECONCILIATION_GRACE_MINUTES } from '../common/constants';
 
 export interface OrphanedReservation {
   id: string;

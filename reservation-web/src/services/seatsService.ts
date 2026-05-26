@@ -18,10 +18,7 @@ export function useSeatsService(): SeatsService {
         return res.data;
       },
       reserve: async (seatId) => {
-        const res = await api.post<{ checkoutUrl: string }>(
-          ENDPOINTS.RESERVATIONS,
-          { seatId },
-        );
+        const res = await api.post<{ checkoutUrl: string }>(ENDPOINTS.RESERVATIONS, { seatId });
         return res.data;
       },
     }),

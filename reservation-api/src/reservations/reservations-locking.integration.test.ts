@@ -111,10 +111,9 @@ describe('seat-reservation locking (live Postgres)', () => {
     );
     expect(rows.filter((r) => r.status === RESERVATION_STATUS.PENDING_PAYMENT)).toHaveLength(1);
 
-    const seat = await pool.query<{ status: string }>(
-      'SELECT status FROM seats WHERE id = $1',
-      [SEAT],
-    );
+    const seat = await pool.query<{ status: string }>('SELECT status FROM seats WHERE id = $1', [
+      SEAT,
+    ]);
     expect(seat.rows[0].status).toBe(SEAT_STATUS.PENDING_PAYMENT);
   });
 
@@ -137,10 +136,7 @@ describe('seat-reservation locking (live Postgres)', () => {
 
     // A terminal reservation does not occupy the partial index, so the seat
     // can be re-reserved once the prior one settles.
-    await pool.query(
-      "UPDATE reservations SET status = 'EXPIRED' WHERE seat_id = $1",
-      [SEAT],
-    );
+    await pool.query("UPDATE reservations SET status = 'EXPIRED' WHERE seat_id = $1", [SEAT]);
     await expect(
       pool.query(
         `INSERT INTO reservations (seat_id, user_id, status, locked_at)

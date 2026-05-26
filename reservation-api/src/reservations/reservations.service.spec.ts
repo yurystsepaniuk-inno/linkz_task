@@ -1,20 +1,11 @@
 import { Test } from '@nestjs/testing';
-import {
-  ConflictException,
-  BadGatewayException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { ConflictException, BadGatewayException, NotFoundException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ReservationsService } from './reservations.service';
 import { ReservationsRepository } from './reservations.repository';
 import { PaymentAuditRepository } from '../audit/payment-audit.repository';
 import { TransactionRunner } from '../database/transaction.runner';
-import {
-  SEAT_STATUS,
-  ERROR_CODE,
-  AUDIT_EVENT,
-} from '../common/constants';
+import { SEAT_STATUS, ERROR_CODE, AUDIT_EVENT } from '../common/constants';
 
 describe('ReservationsService', () => {
   let service: ReservationsService;

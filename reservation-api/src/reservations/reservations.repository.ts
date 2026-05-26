@@ -2,11 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
 import { Queryable } from '../database/queryable';
-import {
-  SEAT_STATUS,
-  RESERVATION_STATUS,
-  SeatStatus,
-} from '../common/constants';
+import { SEAT_STATUS, RESERVATION_STATUS, SeatStatus } from '../common/constants';
 
 /**
  * Reservations + seat-state mutations (seat reads live in `SeatsRepository`).
@@ -30,19 +26,11 @@ export class ReservationsRepository {
     return rows[0];
   }
 
-  async setSeatStatus(
-    seatId: string,
-    status: SeatStatus,
-    db: Queryable,
-  ): Promise<void> {
+  async setSeatStatus(seatId: string, status: SeatStatus, db: Queryable): Promise<void> {
     await db.query('UPDATE seats SET status = $1 WHERE id = $2', [status, seatId]);
   }
 
-  async insertPendingReservation(
-    seatId: string,
-    userId: string,
-    db: Queryable,
-  ): Promise<string> {
+  async insertPendingReservation(seatId: string, userId: string, db: Queryable): Promise<string> {
     const { rows } = await db.query<{ id: string }>(
       `INSERT INTO reservations (seat_id, user_id, status, locked_at)
        VALUES ($1, $2, $3, NOW())
@@ -52,11 +40,7 @@ export class ReservationsRepository {
     return rows[0].id;
   }
 
-  async attachSessionId(
-    reservationId: string,
-    sessionId: string,
-    db: Queryable,
-  ): Promise<void> {
+  async attachSessionId(reservationId: string, sessionId: string, db: Queryable): Promise<void> {
     await db.query('UPDATE reservations SET session_id = $1 WHERE id = $2', [
       sessionId,
       reservationId,
@@ -81,10 +65,7 @@ export class ReservationsRepository {
    * seat-expiry cron has already raced ahead and re-issued the seat to
    * another reservation, we leave it alone instead of clobbering it.
    */
-  async releaseSeatAndFailReservation(
-    reservationId: string,
-    db: Queryable,
-  ): Promise<void> {
+  async releaseSeatAndFailReservation(reservationId: string, db: Queryable): Promise<void> {
     const { rows } = await db.query<{ seat_id: string }>(
       `UPDATE reservations SET status = $1
         WHERE id = $2 AND status = $3
@@ -93,9 +74,10 @@ export class ReservationsRepository {
     );
     const seatId = rows[0]?.seat_id;
     if (!seatId) return; // already transitioned by cron / webhook — nothing to release
-    await db.query(
-      'UPDATE seats SET status = $1 WHERE id = $2 AND status = $3',
-      [SEAT_STATUS.AVAILABLE, seatId, SEAT_STATUS.PENDING_PAYMENT],
-    );
+    await db.query('UPDATE seats SET status = $1 WHERE id = $2 AND status = $3', [
+      SEAT_STATUS.AVAILABLE,
+      seatId,
+      SEAT_STATUS.PENDING_PAYMENT,
+    ]);
   }
 }

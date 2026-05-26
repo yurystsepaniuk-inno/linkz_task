@@ -7,7 +7,6 @@ export function LandingPage() {
   // 7 days. If the demo "stops working" after a week with no other change,
   // that's the Clerk session — not a regression in this app.
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.info(
       '[linkz] Clerk free tier expires sessions after 7 days (Pro: 90d). ' +
         'If sign-in suddenly fails on a long-lived demo key, that is the cause.',

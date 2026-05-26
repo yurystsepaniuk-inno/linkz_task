@@ -59,7 +59,12 @@ describe('RefundsService', () => {
     const result = await service.create({ sessionId: 'cs_1', reason: 'reconciliation' });
 
     expect(result).toEqual(inserted);
-    expect(refunds.upsert).toHaveBeenCalledWith('cs_1', 10, 'reconciliation', REFUND_STATUS.REFUNDED);
+    expect(refunds.upsert).toHaveBeenCalledWith(
+      'cs_1',
+      10,
+      'reconciliation',
+      REFUND_STATUS.REFUNDED,
+    );
   });
 
   it('is idempotent: a second call for the same session returns the existing row without INSERTing', async () => {

@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { PG_POOL } from '../database/database.module';
 import { Queryable } from '../database/queryable';
 import { DELIVERY_STATUS, DeliveryStatus } from '../common/constants';
@@ -122,11 +122,7 @@ export class WebhookDeliveryRepository {
     }
   }
 
-  async markDelivered(
-    id: string,
-    attempts: number,
-    db: Queryable = this.pool,
-  ): Promise<void> {
+  async markDelivered(id: string, attempts: number, db: Queryable = this.pool): Promise<void> {
     await db.query(
       `UPDATE webhook_deliveries
        SET status = $1, attempts = $2, next_attempt_at = NULL, last_error = NULL, updated_at = NOW()

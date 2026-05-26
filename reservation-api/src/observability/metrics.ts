@@ -41,23 +41,17 @@ export const webhookSignatureRejectedTotal = meter.createCounter(
   { description: 'HMAC-rejected inbound webhooks. Security signal — alert if > 0.' },
 );
 
-export const reservationDuration = meter.createHistogram(
-  'reservation_request_duration_seconds',
-  {
-    description: 'Server-side latency of POST /api/reservations.',
-    valueType: ValueType.DOUBLE,
-    unit: 's',
-  },
-);
+export const reservationDuration = meter.createHistogram('reservation_request_duration_seconds', {
+  description: 'Server-side latency of POST /api/reservations.',
+  valueType: ValueType.DOUBLE,
+  unit: 's',
+});
 
-export const reconciliationRefundsTotal = meter.createCounter(
-  'reconciliation_refunds_total',
-  {
-    description:
-      'Refunds initiated by the reconciliation cron. A non-zero value means ' +
-      'the webhook path failed for some session and the slow path picked up the slack.',
-  },
-);
+export const reconciliationRefundsTotal = meter.createCounter('reconciliation_refunds_total', {
+  description:
+    'Refunds initiated by the reconciliation cron. A non-zero value means ' +
+    'the webhook path failed for some session and the slow path picked up the slack.',
+});
 
 export const seatExpirySweptTotal = meter.createCounter('seat_expiry_swept_total', {
   description: 'Stale PENDING_PAYMENT reservations released by the every-minute sweep.',

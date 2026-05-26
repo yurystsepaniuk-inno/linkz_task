@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { SessionsRepository, CheckoutSession } from './sessions.repository';
@@ -119,36 +115,28 @@ export class CheckoutService {
 
   async pay(sessionId: string, dto: PayDto): Promise<PayResponse> {
     const started = process.hrtime.bigint();
-    return withSpan(
-      'checkout.pay',
-      { 'session.id': sessionId },
-      async (span) => {
-        const lifecycle = this.validateCardOrThrow(dto.cardNumber, started);
-        span.setAttribute('payment.result', lifecycle.result);
+    return withSpan('checkout.pay', { 'session.id': sessionId }, async (span) => {
+      const lifecycle = this.validateCardOrThrow(dto.cardNumber, started);
+      span.setAttribute('payment.result', lifecycle.result);
 
-        const claimed = await this.claimSessionOrThrow(
-          sessionId,
-          lifecycle.sessionStatus,
-          started,
-        );
+      const claimed = await this.claimSessionOrThrow(sessionId, lifecycle.sessionStatus, started);
 
-        const signed = this.signPaymentWebhook(sessionId, claimed, lifecycle.event);
-        const handle = await this.delivery.deliver(
-          signed.url,
-          signed.body,
-          signed.signature,
-          sessionId,
-        );
-        this.emitPaymentOutcome(started, lifecycle.result);
-        span.setAttribute('webhook.delivered_first_attempt', handle.deliveredOnFirstAttempt);
+      const signed = this.signPaymentWebhook(sessionId, claimed, lifecycle.event);
+      const handle = await this.delivery.deliver(
+        signed.url,
+        signed.body,
+        signed.signature,
+        sessionId,
+      );
+      this.emitPaymentOutcome(started, lifecycle.result);
+      span.setAttribute('webhook.delivered_first_attempt', handle.deliveredOnFirstAttempt);
 
-        return {
-          status: lifecycle.result,
-          webhookDelivered: handle.deliveredOnFirstAttempt,
-          deliveryId: handle.deliveryId,
-        };
-      },
-    );
+      return {
+        status: lifecycle.result,
+        webhookDelivered: handle.deliveredOnFirstAttempt,
+        deliveryId: handle.deliveryId,
+      };
+    });
   }
 
   // --- step helpers -------------------------------------------------------

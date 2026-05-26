@@ -44,8 +44,7 @@ export const PAYMENT_ERROR_CODE = {
   SESSION_ALREADY_PROCESSED: 'SESSION_ALREADY_PROCESSED',
   INVALID_API_KEY: 'INVALID_API_KEY',
 } as const;
-export type PaymentErrorCode =
-  (typeof PAYMENT_ERROR_CODE)[keyof typeof PAYMENT_ERROR_CODE];
+export type PaymentErrorCode = (typeof PAYMENT_ERROR_CODE)[keyof typeof PAYMENT_ERROR_CODE];
 
 // Checkout-session TTL. The buyer has this long to submit a card after the
 // session is created; any later `pay()` is rejected at the DB by the
@@ -67,9 +66,9 @@ export const WEBHOOK_DELIVERY = {
 } as const;
 
 export const DELIVERY_STATUS = {
-  PENDING: 'PENDING',     // attempts in flight; more retries scheduled
+  PENDING: 'PENDING', // attempts in flight; more retries scheduled
   DELIVERED: 'DELIVERED', // a fetch returned 2xx — reservation-api has the event
-  FAILED: 'FAILED',       // exhausted all attempts; reconciliation cron is the recovery
+  FAILED: 'FAILED', // exhausted all attempts; reconciliation cron is the recovery
 } as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUS)[keyof typeof DELIVERY_STATUS];
 

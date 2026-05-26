@@ -89,7 +89,10 @@ export class SessionsRepository {
   /** No TTL filter — settled rows (PAID/FAILED/EXPIRED) are the canonical
    *  history and must remain visible past the buyer-facing TTL for
    *  reconciliation, refunds, and `pay()` 404-vs-400 disambiguation. */
-  async getInternal(sessionId: string, db: Queryable = this.pool): Promise<CheckoutSession | undefined> {
+  async getInternal(
+    sessionId: string,
+    db: Queryable = this.pool,
+  ): Promise<CheckoutSession | undefined> {
     const { rows } = await db.query<SessionRow>(
       `SELECT id, seat_id, user_id, amount, status, expires_at
          FROM checkout_sessions

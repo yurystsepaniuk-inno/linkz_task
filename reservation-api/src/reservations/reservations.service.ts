@@ -15,19 +15,12 @@ import {
   AUDIT_OUTCOME,
 } from '../common/constants';
 import { MESSAGES } from '../common/messages';
-import {
-  PaymentAuditRepository,
-  AuditRow,
-} from '../audit/payment-audit.repository';
+import { PaymentAuditRepository, AuditRow } from '../audit/payment-audit.repository';
 import { ReservationsRepository } from './reservations.repository';
 import { TransactionRunner } from '../database/transaction.runner';
 import { fetchWithTimeout } from '../common/http';
 import { withSpan } from '../observability/tracer';
-import {
-  reservationsTotal,
-  reservationDuration,
-  recordDuration,
-} from '../observability/metrics';
+import { reservationsTotal, reservationDuration, recordDuration } from '../observability/metrics';
 
 /**
  * `conflict` (seat already taken) is a successful business outcome and only
@@ -58,10 +51,7 @@ export class ReservationsService {
    * audit → metric. The payment-api call deliberately happens *after* the
    * lock commits so the row lock is never held across a network round-trip.
    */
-  async create(
-    dto: CreateReservationDto,
-    userId: string,
-  ): Promise<{ checkoutUrl: string }> {
+  async create(dto: CreateReservationDto, userId: string): Promise<{ checkoutUrl: string }> {
     const started = process.hrtime.bigint();
     return withSpan(
       'reservation.create',
@@ -76,10 +66,7 @@ export class ReservationsService {
           this.emitReservationOutcome(started, 'confirmed');
           return { checkoutUrl: session.checkoutUrl };
         } catch (err) {
-          this.logger.error(
-            `Payment API call failed for seat ${dto.seatId}; releasing lock`,
-            err,
-          );
+          this.logger.error(`Payment API call failed for seat ${dto.seatId}; releasing lock`, err);
           await this.releaseLockAndMarkFailed(reservationId);
           this.emitReservationOutcome(started, 'failed');
           throw new BadGatewayException(MESSAGES.reservations.paymentServiceUnavailable);
@@ -108,8 +95,7 @@ export class ReservationsService {
     try {
       return await this.lockSeat(dto, userId);
     } catch (err) {
-      const outcome: ReservationOutcome =
-        err instanceof ConflictException ? 'conflict' : 'failed';
+      const outcome: ReservationOutcome = err instanceof ConflictException ? 'conflict' : 'failed';
       this.emitReservationOutcome(started, outcome);
       throw err;
     }
@@ -121,37 +107,29 @@ export class ReservationsService {
    * 23505 mapping is what stops a missed-lock regression from leaking 500s.
    */
   private async lockSeat(dto: CreateReservationDto, userId: string): Promise<string> {
-    return withSpan(
-      'reservation.lock_seat',
-      { 'seat.id': dto.seatId },
-      async (span) => {
-        try {
-          return await this.tx.run(async (client) => {
-            const seat = await this.reservations.lockSeatForUpdate(dto.seatId, client);
-            if (!seat || seat.status !== SEAT_STATUS.AVAILABLE) {
-              throw new ConflictException(ERROR_CODE.SEAT_ALREADY_OCCUPIED);
-            }
-            await this.reservations.setSeatStatus(
-              dto.seatId,
-              SEAT_STATUS.PENDING_PAYMENT,
-              client,
-            );
-            const newId = await this.reservations.insertPendingReservation(
-              dto.seatId,
-              userId,
-              client,
-            );
-            span.setAttribute('reservation.id', newId);
-            return newId;
-          });
-        } catch (err) {
-          if ((err as { code?: string })?.code === '23505') {
+    return withSpan('reservation.lock_seat', { 'seat.id': dto.seatId }, async (span) => {
+      try {
+        return await this.tx.run(async (client) => {
+          const seat = await this.reservations.lockSeatForUpdate(dto.seatId, client);
+          if (!seat || seat.status !== SEAT_STATUS.AVAILABLE) {
             throw new ConflictException(ERROR_CODE.SEAT_ALREADY_OCCUPIED);
           }
-          throw err;
+          await this.reservations.setSeatStatus(dto.seatId, SEAT_STATUS.PENDING_PAYMENT, client);
+          const newId = await this.reservations.insertPendingReservation(
+            dto.seatId,
+            userId,
+            client,
+          );
+          span.setAttribute('reservation.id', newId);
+          return newId;
+        });
+      } catch (err) {
+        if ((err as { code?: string })?.code === '23505') {
+          throw new ConflictException(ERROR_CODE.SEAT_ALREADY_OCCUPIED);
         }
-      },
-    );
+        throw err;
+      }
+    });
   }
 
   /** payment-api is the sole price authority — we send seat+user and read the

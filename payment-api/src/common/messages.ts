@@ -13,8 +13,7 @@ export const MESSAGES = {
     notFound: 'No delivery record for this session yet',
   },
   payment: {
-    invalidCardFormat:
-      'cardNumber must be 13-19 digits, optionally separated by spaces or dashes',
+    invalidCardFormat: 'cardNumber must be 13-19 digits, optionally separated by spaces or dashes',
     invalidCardLast4: `Card must end in ${CARD_LAST4.SUCCESS} (success) or ${CARD_LAST4.FAILURE} (failure)`,
   },
 } as const;

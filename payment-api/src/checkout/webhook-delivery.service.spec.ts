@@ -2,10 +2,7 @@ import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { WebhookDeliveryService } from './webhook-delivery.service';
-import {
-  WebhookDeliveryRepository,
-  DeliveryRecord,
-} from './webhook-delivery.repository';
+import { WebhookDeliveryRepository, DeliveryRecord } from './webhook-delivery.repository';
 import { WEBHOOK_DELIVERY, DELIVERY_STATUS, SIGNATURE_HEADER } from '../common/constants';
 
 /**
@@ -23,24 +20,26 @@ function buildFakeRepo() {
 
   return {
     _rows: rows,
-    insertPending: jest.fn(async (sessionId: string, url: string, body: string, signature: string) => {
-      const now = new Date();
-      const record: DeliveryRecord = {
-        id: randomUUID(),
-        session_id: sessionId,
-        url,
-        body,
-        signature,
-        status: DELIVERY_STATUS.PENDING,
-        attempts: 0,
-        next_attempt_at: now,
-        last_error: null,
-        created_at: now,
-        updated_at: now,
-      };
-      rows.set(record.id, record);
-      return { ...record };
-    }),
+    insertPending: jest.fn(
+      async (sessionId: string, url: string, body: string, signature: string) => {
+        const now = new Date();
+        const record: DeliveryRecord = {
+          id: randomUUID(),
+          session_id: sessionId,
+          url,
+          body,
+          signature,
+          status: DELIVERY_STATUS.PENDING,
+          attempts: 0,
+          next_attempt_at: now,
+          last_error: null,
+          created_at: now,
+          updated_at: now,
+        };
+        rows.set(record.id, record);
+        return { ...record };
+      },
+    ),
     findById: jest.fn(async (id: string) => {
       const r = rows.get(id);
       return r ? { ...r } : undefined;
@@ -52,33 +51,38 @@ function buildFakeRepo() {
     }),
     markDelivered: jest.fn(async (id: string, attempts: number) => {
       const r = rows.get(id);
-      if (r) Object.assign(r, {
-        status: DELIVERY_STATUS.DELIVERED,
-        attempts,
-        next_attempt_at: null,
-        last_error: null,
-        updated_at: new Date(),
-      });
+      if (r)
+        Object.assign(r, {
+          status: DELIVERY_STATUS.DELIVERED,
+          attempts,
+          next_attempt_at: null,
+          last_error: null,
+          updated_at: new Date(),
+        });
     }),
     markFailed: jest.fn(async (id: string, attempts: number, error: string | null) => {
       const r = rows.get(id);
-      if (r) Object.assign(r, {
-        status: DELIVERY_STATUS.FAILED,
-        attempts,
-        next_attempt_at: null,
-        last_error: error,
-        updated_at: new Date(),
-      });
+      if (r)
+        Object.assign(r, {
+          status: DELIVERY_STATUS.FAILED,
+          attempts,
+          next_attempt_at: null,
+          last_error: error,
+          updated_at: new Date(),
+        });
     }),
-    rescheduleAfter: jest.fn(async (id: string, attempts: number, _delayMs: number, error: string | null) => {
-      const r = rows.get(id);
-      if (r) Object.assign(r, {
-        attempts,
-        next_attempt_at: new Date(),
-        last_error: error,
-        updated_at: new Date(),
-      });
-    }),
+    rescheduleAfter: jest.fn(
+      async (id: string, attempts: number, _delayMs: number, error: string | null) => {
+        const r = rows.get(id);
+        if (r)
+          Object.assign(r, {
+            attempts,
+            next_attempt_at: new Date(),
+            last_error: error,
+            updated_at: new Date(),
+          });
+      },
+    ),
   };
 }
 
@@ -95,10 +99,7 @@ describe('WebhookDeliveryService', () => {
 
     repo = buildFakeRepo();
     const module = await Test.createTestingModule({
-      providers: [
-        WebhookDeliveryService,
-        { provide: WebhookDeliveryRepository, useValue: repo },
-      ],
+      providers: [WebhookDeliveryService, { provide: WebhookDeliveryRepository, useValue: repo }],
     }).compile();
     service = module.get(WebhookDeliveryService);
   });
@@ -111,7 +112,9 @@ describe('WebhookDeliveryService', () => {
   const tick = () => service.drainDue();
 
   it('returns deliveredOnFirstAttempt=true and DELIVERED when the first POST is 2xx', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, status: 200 } as Response);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: true, status: 200 } as Response);
 
     const handle = await service.deliver('http://x/webhook', '{"a":1}', 'sig-hex', 'cs_1');
 
@@ -160,7 +163,9 @@ describe('WebhookDeliveryService', () => {
   });
 
   it('marks the record FAILED after maxAttempts and stops retrying', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: false, status: 503 } as Response);
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: false, status: 503 } as Response);
 
     const handle = await service.deliver('http://x', 'body', 'sig', 'cs_3');
     expect(handle.deliveredOnFirstAttempt).toBe(false);

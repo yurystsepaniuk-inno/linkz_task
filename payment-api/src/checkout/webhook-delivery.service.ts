@@ -1,23 +1,9 @@
-import {
-  Injectable,
-  Logger,
-  OnApplicationBootstrap,
-  OnApplicationShutdown,
-} from '@nestjs/common';
-import {
-  WebhookDeliveryRepository,
-  DeliveryRecord,
-} from './webhook-delivery.repository';
-import {
-  WEBHOOK_DELIVERY,
-  SIGNATURE_HEADER,
-} from '../common/constants';
+import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { WebhookDeliveryRepository, DeliveryRecord } from './webhook-delivery.repository';
+import { WEBHOOK_DELIVERY, SIGNATURE_HEADER } from '../common/constants';
 import { fetchWithTimeout } from '../common/http';
 import { withSpan } from '../observability/tracer';
-import {
-  webhookDeliveryAttemptsTotal,
-  webhookDeliveryFinalTotal,
-} from '../observability/metrics';
+import { webhookDeliveryAttemptsTotal, webhookDeliveryFinalTotal } from '../observability/metrics';
 
 export interface DeliveryHandle {
   deliveryId: string;

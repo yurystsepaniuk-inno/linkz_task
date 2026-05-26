@@ -21,10 +21,7 @@ import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { resourceFromAttributes } from '@opentelemetry/resources';
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from '@opentelemetry/semantic-conventions';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 const SERVICE_NAME = 'reservation-api';
 const SERVICE_VERSION = process.env.SERVICE_VERSION ?? '1.0.0';
@@ -38,8 +35,7 @@ export function startTracing(): void {
   // OTLP endpoint defaults to the Collector on localhost:4318. In docker
   // compose the Collector listens on `otel-collector:4318` — set
   // OTEL_EXPORTER_OTLP_ENDPOINT in the service's env to point there.
-  const endpoint =
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? 'http://localhost:4318';
+  const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? 'http://localhost:4318';
 
   sdk = new NodeSDK({
     resource: resourceFromAttributes({
@@ -53,9 +49,7 @@ export function startTracing(): void {
       exportIntervalMillis: 15_000,
     }),
     logRecordProcessors: [
-      new BatchLogRecordProcessor(
-        new OTLPLogExporter({ url: `${endpoint}/v1/logs` }),
-      ),
+      new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${endpoint}/v1/logs` })),
     ],
     instrumentations: [
       getNodeAutoInstrumentations({

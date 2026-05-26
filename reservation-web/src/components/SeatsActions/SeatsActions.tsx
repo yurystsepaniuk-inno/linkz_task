@@ -18,11 +18,7 @@ export function SeatsActions({ canBook, loading, onBook, onRefresh }: SeatsActio
       >
         {loading ? MESSAGES.seats.booking : MESSAGES.seats.book}
       </button>
-      <button
-        className="button button--lg"
-        onClick={onRefresh}
-        data-testid="refresh-button"
-      >
+      <button className="button button--lg" onClick={onRefresh} data-testid="refresh-button">
         {MESSAGES.seats.refresh}
       </button>
     </div>

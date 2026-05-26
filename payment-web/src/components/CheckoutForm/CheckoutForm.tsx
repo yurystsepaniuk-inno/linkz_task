@@ -35,7 +35,9 @@ export function CheckoutForm({
       </div>
       <p className="hint-text">{MESSAGES.checkout.cardHint}</p>
       {error && (
-        <p data-testid="checkout-error" className="error-text">{error}</p>
+        <p data-testid="checkout-error" className="error-text">
+          {error}
+        </p>
       )}
       <button type="submit" disabled={paying} data-testid="pay-button" className="button">
         {paying ? MESSAGES.checkout.paying : MESSAGES.checkout.pay}

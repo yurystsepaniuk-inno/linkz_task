@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  UnauthorizedException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Span } from '@opentelemetry/api';
@@ -24,10 +19,7 @@ import { PaymentAuditRepository } from '../audit/payment-audit.repository';
 import { WebhooksRepository, MatchedReservation } from './webhooks.repository';
 import { TransactionRunner } from '../database/transaction.runner';
 import { withSpan } from '../observability/tracer';
-import {
-  paymentOutcomesTotal,
-  webhookSignatureRejectedTotal,
-} from '../observability/metrics';
+import { paymentOutcomesTotal, webhookSignatureRejectedTotal } from '../observability/metrics';
 
 export interface WebhookPayload {
   event: PaymentEvent;
@@ -223,14 +215,9 @@ export class WebhooksService {
     return matched;
   }
 
-  private outcomeFor(
-    matched: MatchedReservation | undefined,
-    event: PaymentEvent,
-  ): AuditOutcome {
+  private outcomeFor(matched: MatchedReservation | undefined, event: PaymentEvent): AuditOutcome {
     if (!matched) return AUDIT_OUTCOME.NOOP;
-    return event === PAYMENT_EVENT.SUCCEEDED
-      ? AUDIT_OUTCOME.SUCCESS
-      : AUDIT_OUTCOME.FAILED;
+    return event === PAYMENT_EVENT.SUCCEEDED ? AUDIT_OUTCOME.SUCCESS : AUDIT_OUTCOME.FAILED;
   }
 
   /** Post-COMMIT only — emits outcomes that actually persisted.
@@ -261,8 +248,7 @@ export class WebhooksService {
       );
       return;
     }
-    const counterOutcome =
-      payload.event === PAYMENT_EVENT.SUCCEEDED ? 'succeeded' : 'failed';
+    const counterOutcome = payload.event === PAYMENT_EVENT.SUCCEEDED ? 'succeeded' : 'failed';
     paymentOutcomesTotal.add(1, { outcome: counterOutcome });
     span.setAttribute('webhook.outcome', counterOutcome);
   }

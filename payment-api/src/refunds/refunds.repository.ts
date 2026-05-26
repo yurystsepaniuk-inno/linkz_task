@@ -25,10 +25,9 @@ export class RefundsRepository {
     sessionId: string,
     db: Queryable = this.pool,
   ): Promise<RefundRow | undefined> {
-    const { rows } = await db.query<RefundRow>(
-      'SELECT * FROM refunds WHERE session_id = $1',
-      [sessionId],
-    );
+    const { rows } = await db.query<RefundRow>('SELECT * FROM refunds WHERE session_id = $1', [
+      sessionId,
+    ]);
     return rows[0];
   }
 

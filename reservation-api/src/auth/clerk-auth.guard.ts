@@ -78,9 +78,7 @@ export class ClerkAuthGuard implements CanActivate {
       // problems: legitimate users got signed out on every Clerk hiccup, and
       // the SLO error budget never recorded the actual cause as our outage.
       if (isUpstreamError(err)) {
-        this.logger.error(
-          `Clerk verification upstream error: ${(err as Error).message}`,
-        );
+        this.logger.error(`Clerk verification upstream error: ${(err as Error).message}`);
         throw new ServiceUnavailableException(MESSAGES.auth.verifierUnavailable);
       }
       throw new UnauthorizedException(MESSAGES.auth.invalidToken);

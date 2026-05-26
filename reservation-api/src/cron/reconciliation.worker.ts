@@ -9,10 +9,7 @@ import {
   REFUND_MAX_ATTEMPTS,
 } from '../common/constants';
 import { PaymentAuditRepository } from '../audit/payment-audit.repository';
-import {
-  ReconciliationRepository,
-  OrphanedReservation,
-} from './reconciliation.repository';
+import { ReconciliationRepository, OrphanedReservation } from './reconciliation.repository';
 import { fetchWithTimeout } from '../common/http';
 import { withSpan } from '../observability/tracer';
 import { reconciliationRefundsTotal } from '../observability/metrics';
@@ -95,8 +92,7 @@ export class ReconciliationWorker {
       return;
     }
     if (session.status === 'PENDING') {
-      const ageHours =
-        (Date.now() - row.created_at.getTime()) / (60 * 60 * 1000);
+      const ageHours = (Date.now() - row.created_at.getTime()) / (60 * 60 * 1000);
       if (ageHours > RECONCILIATION_PENDING_MAX_AGE_HOURS) {
         await this.dismiss(
           row,
@@ -139,9 +135,7 @@ export class ReconciliationWorker {
       );
 
       reconciliationRefundsTotal.add(1, { outcome: 'initiated' });
-      this.logger.log(
-        `Refund initiated for reservation ${row.id} (session ${row.session_id})`,
-      );
+      this.logger.log(`Refund initiated for reservation ${row.id} (session ${row.session_id})`);
       return;
     }
 
@@ -213,14 +207,10 @@ export class ReconciliationWorker {
       amount: session.amount,
       rawPayload: { reason, paymentSessionStatus: session.status },
     });
-    this.logger.log(
-      `Reconciliation dismissed reservation ${row.id} (${reason})`,
-    );
+    this.logger.log(`Reconciliation dismissed reservation ${row.id} (${reason})`);
   }
 
-  private async fetchSessionStatus(
-    sessionId: string,
-  ): Promise<SessionStatusResponse | null> {
+  private async fetchSessionStatus(sessionId: string): Promise<SessionStatusResponse | null> {
     const paymentApiUrl = this.config.getOrThrow<string>('PAYMENT_API_URL');
     const paymentApiKey = this.config.getOrThrow<string>('PAYMENT_API_KEY');
     try {
@@ -244,9 +234,7 @@ export class ReconciliationWorker {
     }
   }
 
-  private async requestRefund(
-    sessionId: string,
-  ): Promise<{ ok: boolean; body: unknown }> {
+  private async requestRefund(sessionId: string): Promise<{ ok: boolean; body: unknown }> {
     const paymentApiUrl = this.config.getOrThrow<string>('PAYMENT_API_URL');
     const paymentApiKey = this.config.getOrThrow<string>('PAYMENT_API_KEY');
     try {

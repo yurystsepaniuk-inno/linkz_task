@@ -20,37 +20,27 @@ export const paymentAttemptsTotal = meter.createCounter('payment_attempts_total'
     'half of the payment-success SLI.',
 });
 
-export const paymentRequestDuration = meter.createHistogram(
-  'payment_request_duration_seconds',
-  {
-    description: 'Server-side latency of the pay() endpoint.',
-    valueType: ValueType.DOUBLE,
-    unit: 's',
-  },
-);
+export const paymentRequestDuration = meter.createHistogram('payment_request_duration_seconds', {
+  description: 'Server-side latency of the pay() endpoint.',
+  valueType: ValueType.DOUBLE,
+  unit: 's',
+});
 
-export const webhookDeliveryAttemptsTotal = meter.createCounter(
-  'webhook_delivery_attempts_total',
-  {
-    description:
-      'Every webhook attempt (success or failure). The retry loop fires this ' +
-      'once per HTTP call — `outcome` distinguishes sent / failed / retried.',
-  },
-);
+export const webhookDeliveryAttemptsTotal = meter.createCounter('webhook_delivery_attempts_total', {
+  description:
+    'Every webhook attempt (success or failure). The retry loop fires this ' +
+    'once per HTTP call — `outcome` distinguishes sent / failed / retried.',
+});
 
-export const webhookDeliveryFinalTotal = meter.createCounter(
-  'webhook_delivery_final_total',
-  {
-    description:
-      'Terminal outcome of a webhook delivery — DELIVERED (≥1 attempt 2xx) ' +
-      'or FAILED (all retries exhausted). Drives the webhook delivery SLI.',
-  },
-);
+export const webhookDeliveryFinalTotal = meter.createCounter('webhook_delivery_final_total', {
+  description:
+    'Terminal outcome of a webhook delivery — DELIVERED (≥1 attempt 2xx) ' +
+    'or FAILED (all retries exhausted). Drives the webhook delivery SLI.',
+});
 
-export const checkoutSessionsExpiredTotal = meter.createCounter(
-  'checkout_sessions_expired_total',
-  { description: 'Sessions swept PENDING→EXPIRED by the every-minute cron.' },
-);
+export const checkoutSessionsExpiredTotal = meter.createCounter('checkout_sessions_expired_total', {
+  description: 'Sessions swept PENDING→EXPIRED by the every-minute cron.',
+});
 
 export const refundRequestsTotal = meter.createCounter('refund_requests_total', {
   description: 'Refund-API request outcomes (REFUNDED / FAILED / duplicate-noop).',

@@ -8,5 +8,4 @@ export const PAYMENT_ERROR_CODE = {
   INVALID_API_KEY: 'INVALID_API_KEY',
 } as const;
 
-export type PaymentErrorCode =
-  (typeof PAYMENT_ERROR_CODE)[keyof typeof PAYMENT_ERROR_CODE];
+export type PaymentErrorCode = (typeof PAYMENT_ERROR_CODE)[keyof typeof PAYMENT_ERROR_CODE];

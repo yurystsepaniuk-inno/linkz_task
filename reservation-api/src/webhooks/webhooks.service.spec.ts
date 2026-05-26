@@ -71,7 +71,12 @@ describe('WebhooksService', () => {
   const body = (p: object) => Buffer.from(JSON.stringify(p));
 
   it('rejects an invalid signature with 401 and audits SIGNATURE_REJECTED', async () => {
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
+    const payload = {
+      event: PAYMENT_EVENT.SUCCEEDED,
+      sessionId: 'cs_abc',
+      seatId: 'A1',
+      userId: 'user-1',
+    };
     await expect(service.handle(payload, body(payload), 'badsig')).rejects.toThrow(
       UnauthorizedException,
     );
@@ -82,21 +87,36 @@ describe('WebhooksService', () => {
   });
 
   it('rejects a missing raw body with 401 and audits SIGNATURE_REJECTED', async () => {
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
+    const payload = {
+      event: PAYMENT_EVENT.SUCCEEDED,
+      sessionId: 'cs_abc',
+      seatId: 'A1',
+      userId: 'user-1',
+    };
     await expect(service.handle(payload, undefined, '')).rejects.toThrow(UnauthorizedException);
     expect(auditEntries(AUDIT_EVENT.SIGNATURE_REJECTED)).toHaveLength(1);
   });
 
   it('rejects an unknown event with 400', async () => {
-    const payload = { event: 'payment.exploded', sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
-    await expect(
-      service.handle(payload as never, body(payload), sign(payload)),
-    ).rejects.toThrow(BadRequestException);
+    const payload = {
+      event: 'payment.exploded',
+      sessionId: 'cs_abc',
+      seatId: 'A1',
+      userId: 'user-1',
+    };
+    await expect(service.handle(payload as never, body(payload), sign(payload))).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('confirms the seat and audits WEBHOOK_RECEIVED + PAYMENT_SUCCEEDED on payment.succeeded', async () => {
     matchReservation('res-1', 'A1');
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A1', userId: 'user-1' };
+    const payload = {
+      event: PAYMENT_EVENT.SUCCEEDED,
+      sessionId: 'cs_abc',
+      seatId: 'A1',
+      userId: 'user-1',
+    };
 
     const result = await service.handle(payload, body(payload), sign(payload));
     expect(result).toEqual({ received: true });
@@ -125,7 +145,12 @@ describe('WebhooksService', () => {
 
   it('releases the seat and audits PAYMENT_FAILED on payment.failed', async () => {
     matchReservation('res-2', 'A2');
-    const payload = { event: PAYMENT_EVENT.FAILED, sessionId: 'cs_def', seatId: 'A2', userId: 'user-2' };
+    const payload = {
+      event: PAYMENT_EVENT.FAILED,
+      sessionId: 'cs_def',
+      seatId: 'A2',
+      userId: 'user-2',
+    };
 
     const result = await service.handle(payload, body(payload), sign(payload));
     expect(result).toEqual({ received: true });
@@ -141,7 +166,12 @@ describe('WebhooksService', () => {
 
   it('atomically releases the seat and audits PAYMENT_FAILED in one transaction', async () => {
     matchReservation('res-3', 'A3');
-    const payload = { event: PAYMENT_EVENT.FAILED, sessionId: 'cs_ghi', seatId: 'A3', userId: 'user-3' };
+    const payload = {
+      event: PAYMENT_EVENT.FAILED,
+      sessionId: 'cs_ghi',
+      seatId: 'A3',
+      userId: 'user-3',
+    };
 
     await service.handle(payload, body(payload), sign(payload));
 
@@ -161,7 +191,12 @@ describe('WebhooksService', () => {
 
   it('updates the seat from the matched reservation, not the webhook payload', async () => {
     matchReservation('res-1', 'A1');
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_abc', seatId: 'A3', userId: 'user-1' };
+    const payload = {
+      event: PAYMENT_EVENT.SUCCEEDED,
+      sessionId: 'cs_abc',
+      seatId: 'A3',
+      userId: 'user-1',
+    };
     await service.handle(payload, body(payload), sign(payload));
     expect(repo.setSeatStatusIfPending).toHaveBeenCalledWith(
       'A1',
@@ -172,7 +207,12 @@ describe('WebhooksService', () => {
 
   it('audits a stale webhook (no prior, no match) as NOOP and touches no seat', async () => {
     repo.transitionReservation.mockResolvedValue(undefined);
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_stale', seatId: 'A1', userId: 'user-1' };
+    const payload = {
+      event: PAYMENT_EVENT.SUCCEEDED,
+      sessionId: 'cs_stale',
+      seatId: 'A1',
+      userId: 'user-1',
+    };
     const result = await service.handle(payload, body(payload), sign(payload));
     expect(result).toEqual({ received: true });
     expect(repo.setSeatStatusIfPending).not.toHaveBeenCalled();
@@ -184,7 +224,12 @@ describe('WebhooksService', () => {
 
   it('short-circuits a duplicate webhook delivery as DUPLICATE_WEBHOOK / NOOP', async () => {
     mockAudit.hasPriorOutcome.mockResolvedValue(true);
-    const payload = { event: PAYMENT_EVENT.SUCCEEDED, sessionId: 'cs_dup', seatId: 'A1', userId: 'user-1' };
+    const payload = {
+      event: PAYMENT_EVENT.SUCCEEDED,
+      sessionId: 'cs_dup',
+      seatId: 'A1',
+      userId: 'user-1',
+    };
 
     const result = await service.handle(payload, body(payload), sign(payload));
     expect(result).toEqual({ received: true });

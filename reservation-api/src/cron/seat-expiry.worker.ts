@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import {
-  RESERVATION_LOCK_TTL_MINUTES,
-  AUDIT_EVENT,
-  AUDIT_OUTCOME,
-} from '../common/constants';
+import { RESERVATION_LOCK_TTL_MINUTES, AUDIT_EVENT, AUDIT_OUTCOME } from '../common/constants';
 import { PaymentAuditRepository } from '../audit/payment-audit.repository';
 import { SeatExpiryRepository } from './seat-expiry.repository';
 import { TransactionRunner } from '../database/transaction.runner';

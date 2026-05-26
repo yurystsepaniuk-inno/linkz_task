@@ -4,17 +4,8 @@ import { SeatsActions, SeatsGrid, Toast } from '../../components';
 import { useSeats } from '../../hooks';
 
 export function SeatsPage() {
-  const {
-    seats,
-    selectedId,
-    canBook,
-    loading,
-    toast,
-    clearToast,
-    selectSeat,
-    refresh,
-    book,
-  } = useSeats();
+  const { seats, selectedId, canBook, loading, toast, clearToast, selectSeat, refresh, book } =
+    useSeats();
 
   return (
     <div className="page page--medium">
@@ -25,12 +16,7 @@ export function SeatsPage() {
 
       <SeatsGrid seats={seats} selectedId={selectedId} onSelect={selectSeat} />
 
-      <SeatsActions
-        canBook={canBook}
-        loading={loading}
-        onBook={book}
-        onRefresh={refresh}
-      />
+      <SeatsActions canBook={canBook} loading={loading} onBook={book} onRefresh={refresh} />
 
       {toast && <Toast message={toast} onClose={clearToast} />}
     </div>

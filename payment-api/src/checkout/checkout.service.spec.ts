@@ -154,7 +154,10 @@ describe('CheckoutService', () => {
 
   it('propagates webhookDelivered=false when the delivery service is still retrying', async () => {
     store.tryClaim.mockResolvedValue(claimedRow({ status: SESSION_STATUS.PAID }));
-    delivery.deliver.mockResolvedValueOnce({ deliveryId: 'd-pending', deliveredOnFirstAttempt: false });
+    delivery.deliver.mockResolvedValueOnce({
+      deliveryId: 'd-pending',
+      deliveredOnFirstAttempt: false,
+    });
 
     const result = await service.pay('sess_x', { cardNumber: '4111111111114000' });
     expect(result.webhookDelivered).toBe(false);
@@ -186,9 +189,9 @@ describe('CheckoutService', () => {
     // Session exists but is no longer PENDING — already PAID or FAILED.
     store.getInternal.mockResolvedValue(claimedRow({ status: SESSION_STATUS.PAID }));
 
-    await expect(
-      service.pay('sess_settled', { cardNumber: '4111111111114000' }),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.pay('sess_settled', { cardNumber: '4111111111114000' })).rejects.toThrow(
+      BadRequestException,
+    );
     expect(delivery.deliver).not.toHaveBeenCalled();
   });
 

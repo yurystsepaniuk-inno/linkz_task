@@ -27,10 +27,7 @@ export class ReservationsController {
 
   /** Append-only payment audit trail for one of the caller's own reservations. */
   @Get(':id/audit')
-  getAudit(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  getAudit(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     return this.reservationsService.getAudit(id, req.auth.userId);
   }
 }
